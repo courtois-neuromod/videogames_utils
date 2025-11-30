@@ -15,6 +15,7 @@ dependencies = [
     "numpy",
     "Pillow",
     "scikit-video",
+    "opencv-python",
 ]
 
 [tool.setuptools]
