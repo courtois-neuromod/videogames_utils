@@ -96,10 +96,10 @@ def get_variables_from_replay(
 
     repetition_variables = reformat_info(replay_info, replay_keys, bk2_fpath, actions)
 
-    if not annotations.get("done", False):
-        logging.warning(
-            f"Done condition not satisfied for {bk2_fpath}. Consider changing skip_first_step."
-        )
+    #if not annotations.get("done", False):
+    #    logging.warning(
+    #        f"Done condition not satisfied for {bk2_fpath}. Consider changing skip_first_step."
+    #    )
     audio_track = assemble_audio(audio_chunks)
     return repetition_variables, replay_info, replay_frames, replay_states, audio_track, audio_rate
 
