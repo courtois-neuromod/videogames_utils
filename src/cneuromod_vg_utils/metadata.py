@@ -45,8 +45,10 @@ def collect_bk2_files(
     {'bk2_file': 'sub-01/ses-001/beh/sub-01_ses-001_run-01_level-w1l1_bk2-00.bk2',
      'sub': '01', 'ses': '001', 'run': '01', 'bk2_idx': 0}
     """
-    pattern = op.join(data_path, "sub-*", "ses-*", "beh", "*.bk2")
-    all_bk2_paths = sorted(glob.glob(pattern))
+    # Search in both 'beh' and 'gamelogs' subdirectories
+    pattern_beh = op.join(data_path, "sub-*", "ses-*", "beh", "*.bk2")
+    pattern_gamelogs = op.join(data_path, "sub-*", "ses-*", "gamelogs", "*.bk2")
+    all_bk2_paths = sorted(glob.glob(pattern_beh) + glob.glob(pattern_gamelogs))
 
     bk2_files = []
     for bk2_path in all_bk2_paths:
@@ -80,14 +82,27 @@ def collect_bk2_files(
         if sessions is not None and f"ses-{ses_id}" not in sessions:
             continue
 
-        # Extract BK2 index (if present in filename)
-        bk2_idx = int(entities.get("bk2", "0"))
+        # Handle different naming conventions:
+        # - Standard BIDS: run-XX_bk2-YY (run number with bk2 index)
+        # - Mario dataset: rep-XXX (repetition number, no separate run field)
+        if "run" in entities:
+            # Standard BIDS format
+            run = entities["run"]
+            bk2_idx = int(entities.get("bk2", "0"))
+        elif "rep" in entities:
+            # Mario dataset format: rep maps to run, bk2_idx is always 0
+            run = entities["rep"]
+            bk2_idx = 0
+        else:
+            # Fallback
+            run = "00"
+            bk2_idx = 0
 
         bk2_info = {
             "bk2_file": rel_path,
             "sub": sub_id,
             "ses": ses_id,
-            "run": entities.get("run", "00"),
+            "run": run,
             "bk2_idx": bk2_idx,
         }
 
