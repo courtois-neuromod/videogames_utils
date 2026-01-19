@@ -8,6 +8,7 @@ import numpy as np
 import retro
 from retro.enums import State
 
+
 def replay_bk2(
     bk2_path,
     skip_first_step: bool = False,
@@ -15,26 +16,27 @@ def replay_bk2(
     game: str | None = None,
     scenario: str | None = None,
     inttype: retro.data.Integrations = retro.data.Integrations.CUSTOM_ONLY,
-) -> Iterable[Tuple[np.ndarray, List[bool], dict, np.ndarray, int, bool, List[str], bytes]]:
+) -> Iterable[Tuple[np.ndarray, List[bool], dict, np.ndarray, int, bool, List[str]]]:
     """
-    Create an iterator that replays a bk2 file, yielding frame, keys, annotations, audio samples, actions, and state.
+    Create an iterator that replays a bk2 file.
 
     Args:
         bk2_path (str): Path to the bk2 file to be replayed.
-        skip_first_step (bool, optional): Whether to skip the first step of the movie. Defaults to False. For CNeuroMod data, apply to first bk2 of each run.
-        game (str, optional): The name of the game. If None, it will be inferred from the bk2 file. Defaults to None.
-        scenario (str, optional): The scenario to be used in the emulator. Defaults to None.
-        inttype (retro.data.Integrations, optional): The integration type for the emulator. Defaults to retro.data.Integrations.CUSTOM_ONLY.
+        skip_first_step (bool, optional): Whether to skip the first step of the movie.
+            Defaults to False. For CNeuroMod data, apply to first bk2 of each run.
+        game (str, optional): The name of the game. If None, inferred from bk2 file.
+        scenario (str, optional): The scenario to be used in the emulator.
+        inttype: The integration type for the emulator.
 
     Yields:
         tuple: A tuple containing:
             - frame (numpy.ndarray): The current frame of the game.
             - keys (list): The list of keys pressed by the players.
             - annotations (dict): A dictionary containing reward, done, and info.
-            - audio_chunk (numpy.ndarray): The PCM audio samples generated for the current step.
+            - audio_chunk (numpy.ndarray): The PCM audio samples for the current step.
             - audio_rate (int): Audio sampling rate in Hz.
+            - truncate (bool): Whether the episode was truncated.
             - actions (list): The list of possible actions in the game.
-            - state (bytes): The current state of the emulator.
     """
     movie = retro.Movie(bk2_path)
     emulator = None
@@ -56,13 +58,13 @@ def replay_bk2(
                     keys.append(movie.get_key(i, p))
             frame, rew, terminate, truncate, info = emulator.step(keys)
             annotations = {"reward": rew, "done": terminate, "info": info}
-            state = emulator.em.get_state()
             audio_chunk = emulator.em.get_audio().copy()
-            yield frame, keys, annotations, audio_chunk, audio_rate, truncate, actions, state
+            yield frame, keys, annotations, audio_chunk, audio_rate, truncate, actions
     finally:
         if emulator is not None:
             emulator.close()
         movie.close()
+
 
 def get_variables_from_replay(
     bk2_fpath,
@@ -72,11 +74,16 @@ def get_variables_from_replay(
     scenario=None,
     inttype=retro.data.Integrations.CUSTOM_ONLY,
 ) -> Tuple[dict, List[dict], List[np.ndarray], np.ndarray, int]:
-    """Replay the bk2 file and return game variables and frames (no states).
-    
-    For memory efficiency, states are NOT collected. Use get_variables_from_replay_streaming
-    if you need states - it writes them directly to HDF5.
-    
+    """Replay the bk2 file and return game variables, frames, and audio.
+
+    Args:
+        bk2_fpath: Path to the bk2 file.
+        skip_first_step: Whether to skip the first step.
+        state: Initial state for the emulator.
+        game: Game name (inferred from bk2 if None).
+        scenario: Scenario name.
+        inttype: Integration type.
+
     Returns:
         Tuple of (variables, info, frames, audio, audio_rate).
     """
@@ -94,7 +101,7 @@ def get_variables_from_replay(
     audio_chunks: List[np.ndarray] = []
     audio_rate = 0
 
-    for frame, keys, annotations, audio_chunk, chunk_rate, _, actions, state in replay:
+    for frame, keys, annotations, audio_chunk, chunk_rate, _, actions in replay:
         replay_keys.append(keys)
         replay_info.append(annotations["info"])
         replay_frames.append(frame)
@@ -106,86 +113,6 @@ def get_variables_from_replay(
     audio_track = assemble_audio(audio_chunks)
     return repetition_variables, replay_info, replay_frames, audio_track, audio_rate
 
-
-def get_variables_from_replay_streaming(
-    bk2_fpath,
-    states_output_path,
-    skip_first_step=True,
-    state=State.DEFAULT,
-    game=None,
-    scenario=None,
-    inttype=retro.data.Integrations.CUSTOM_ONLY,
-) -> Tuple[dict, List[dict], List[np.ndarray], np.ndarray, int]:
-    """Replay the bk2 file, streaming states to HDF5 to avoid memory issues.
-    
-    States are written directly to an HDF5 file with gzip compression during replay.
-    Each state is ~1MB uncompressed but compresses to ~50-100KB.
-    
-    Args:
-        bk2_fpath: Path to the bk2 file.
-        states_output_path: Path for the output HDF5 file containing states.
-        skip_first_step: Whether to skip the first step.
-        state: Initial state for the emulator.
-        game: Game name (inferred from bk2 if None).
-        scenario: Scenario name.
-        inttype: Integration type.
-    
-    Returns:
-        Tuple of (variables, info, frames, audio, audio_rate).
-        States are written to states_output_path as HDF5.
-    """
-    import h5py
-    
-    replay = replay_bk2(
-        bk2_fpath,
-        skip_first_step=skip_first_step,
-        state=state,
-        game=game,
-        scenario=scenario,
-        inttype=inttype,
-    )
-    replay_frames = []
-    replay_keys = []
-    replay_info = []
-    audio_chunks: List[np.ndarray] = []
-    audio_rate = 0
-    
-    # Stream states to HDF5 with compression
-    with h5py.File(states_output_path, 'w') as hf:
-        states_dataset = None
-        frame_idx = 0
-        
-        for frame, keys, annotations, audio_chunk, chunk_rate, _, actions, emu_state in replay:
-            replay_keys.append(keys)
-            replay_info.append(annotations["info"])
-            replay_frames.append(frame)
-            if audio_chunk.size:
-                audio_chunks.append(audio_chunk)
-            audio_rate = chunk_rate
-            
-            # Convert state bytes to uint8 array and write to HDF5
-            state_array = np.frombuffer(emu_state, dtype=np.uint8)
-            
-            if states_dataset is None:
-                # Create dataset on first frame with compression
-                states_dataset = hf.create_dataset(
-                    'states',
-                    shape=(0, len(state_array)),
-                    maxshape=(None, len(state_array)),
-                    dtype=np.uint8,
-                    chunks=(1, len(state_array)),
-                    compression='gzip',
-                    compression_opts=1,  # Fast compression
-                )
-            
-            # Append this state
-            states_dataset.resize(frame_idx + 1, axis=0)
-            states_dataset[frame_idx] = state_array
-            frame_idx += 1
-
-    repetition_variables = reformat_info(replay_info, replay_keys, bk2_fpath, actions)
-    audio_track = assemble_audio(audio_chunks)
-    return repetition_variables, replay_info, replay_frames, audio_track, audio_rate
 
 def reformat_info(info, keys, bk2_fpath, actions):
     """Create a structured dictionary from replay info."""
@@ -220,7 +147,6 @@ def reformat_info(info, keys, bk2_fpath, actions):
 
 def assemble_audio(chunks: List[np.ndarray]) -> np.ndarray:
     """Concatenate audio chunks produced during replay into a single waveform."""
-
     if not chunks:
         return np.empty(0, dtype=np.int16)
     return np.concatenate(chunks)
@@ -228,7 +154,6 @@ def assemble_audio(chunks: List[np.ndarray]) -> np.ndarray:
 
 def write_wav(audio: np.ndarray, sample_rate: int, output_path: str) -> None:
     """Persist 16-bit PCM audio to disk using the standard library."""
-
     if audio.size == 0:
         logging.warning("No audio samples provided, skipping WAV write")
         return
