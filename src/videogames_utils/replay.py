@@ -37,28 +37,32 @@ def replay_bk2(
             - state (bytes): The current state of the emulator.
     """
     movie = retro.Movie(bk2_path)
-    if game is None:
-        game = movie.get_game()
-    logging.debug(f"Creating emulator for game: {game}")
-    emulator = retro.make(game, state=state, scenario=scenario, inttype=inttype, render_mode=False)
-    emulator.initial_state = movie.get_state()
-    actions = emulator.buttons
-    emulator.reset()
-    audio_rate = int(emulator.em.get_audio_rate())
-    if skip_first_step:
-        movie.step()
-    while movie.step():
-        keys = []
-        for p in range(movie.players):
-            for i in range(emulator.num_buttons):
-                keys.append(movie.get_key(i, p))
-        frame, rew, terminate, truncate, info = emulator.step(keys)
-        annotations = {"reward": rew, "done": terminate, "info": info}
-        state = emulator.em.get_state()
-        audio_chunk = emulator.em.get_audio().copy()
-        yield frame, keys, annotations, audio_chunk, audio_rate, truncate, actions, state
-    emulator.close()
-    movie.close()
+    emulator = None
+    try:
+        if game is None:
+            game = movie.get_game()
+        logging.debug(f"Creating emulator for game: {game}")
+        emulator = retro.make(game, state=state, scenario=scenario, inttype=inttype, render_mode=False)
+        emulator.initial_state = movie.get_state()
+        actions = emulator.buttons
+        emulator.reset()
+        audio_rate = int(emulator.em.get_audio_rate())
+        if skip_first_step:
+            movie.step()
+        while movie.step():
+            keys = []
+            for p in range(movie.players):
+                for i in range(emulator.num_buttons):
+                    keys.append(movie.get_key(i, p))
+            frame, rew, terminate, truncate, info = emulator.step(keys)
+            annotations = {"reward": rew, "done": terminate, "info": info}
+            state = emulator.em.get_state()
+            audio_chunk = emulator.em.get_audio().copy()
+            yield frame, keys, annotations, audio_chunk, audio_rate, truncate, actions, state
+    finally:
+        if emulator is not None:
+            emulator.close()
+        movie.close()
 
 def get_variables_from_replay(
     bk2_fpath,

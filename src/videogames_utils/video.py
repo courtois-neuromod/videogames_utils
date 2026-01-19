@@ -40,25 +40,29 @@ def make_mp4(
 ) -> None:
     """Create an MP4 file from a list of frames, with optional audio multiplexing using moviepy."""
 
-    # Convert frames to list if not already (moviepy needs list)
-    frame_list = list(selected_frames)
-
     # Convert frames to RGB format expected by moviepy
+    # Process directly from iterator to avoid creating an extra copy
     processed_frames = []
-    for frame in frame_list:
+    for frame in selected_frames:
         im = Image.new("RGB", (frame.shape[1], frame.shape[0]), color="white")
         im.paste(Image.fromarray(frame), (0, 0))
         processed_frames.append(np.array(im))
 
     # Create video clip from frames
     clip = ImageSequenceClip(processed_frames, fps=fps)
+    
+    # Clear processed_frames now that clip has a reference
+    del processed_frames
 
     final_path = Path(movie_fname)
+    audio_clip = None
 
     if audio is None or sample_rate is None:
         # Write video without audio
-        clip.write_videofile(str(final_path), codec='libx264', audio=False, logger=None)
-        clip.close()
+        try:
+            clip.write_videofile(str(final_path), codec='libx264', audio=False, logger=None)
+        finally:
+            clip.close()
         return
 
     # Handle audio
@@ -80,6 +84,9 @@ def make_mp4(
         clip.write_videofile(str(final_path), codec='libx264', audio_codec='aac', logger=None)
 
     finally:
+        # Close clips in reverse order of creation
+        if audio_clip is not None:
+            audio_clip.close()
         clip.close()
         try:
             temp_audio.unlink(missing_ok=True)
