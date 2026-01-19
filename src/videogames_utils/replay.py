@@ -16,7 +16,7 @@ def replay_bk2(
     game: str | None = None,
     scenario: str | None = None,
     inttype: retro.data.Integrations = retro.data.Integrations.CUSTOM_ONLY,
-) -> Iterable[Tuple[np.ndarray, List[bool], dict, np.ndarray, int, bool, List[str]]]:
+) -> Iterable[Tuple[np.ndarray, List[bool], dict, np.ndarray, int, bool, List[str], bytes]]:
     """
     Create an iterator that replays a bk2 file.
 
@@ -37,6 +37,7 @@ def replay_bk2(
             - audio_rate (int): Audio sampling rate in Hz.
             - truncate (bool): Whether the episode was truncated.
             - actions (list): The list of possible actions in the game.
+            - state (bytes): The current state of the emulator.
     """
     movie = retro.Movie(bk2_path)
     emulator = None
@@ -58,8 +59,9 @@ def replay_bk2(
                     keys.append(movie.get_key(i, p))
             frame, rew, terminate, truncate, info = emulator.step(keys)
             annotations = {"reward": rew, "done": terminate, "info": info}
+            state = emulator.em.get_state()
             audio_chunk = emulator.em.get_audio().copy()
-            yield frame, keys, annotations, audio_chunk, audio_rate, truncate, actions
+            yield frame, keys, annotations, audio_chunk, audio_rate, truncate, actions, state
     finally:
         if emulator is not None:
             emulator.close()
@@ -101,7 +103,7 @@ def get_variables_from_replay(
     audio_chunks: List[np.ndarray] = []
     audio_rate = 0
 
-    for frame, keys, annotations, audio_chunk, chunk_rate, _, actions in replay:
+    for frame, keys, annotations, audio_chunk, chunk_rate, _, actions, state in replay:
         replay_keys.append(keys)
         replay_info.append(annotations["info"])
         replay_frames.append(frame)

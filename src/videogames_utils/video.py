@@ -81,7 +81,15 @@ def make_mp4(
         clip = clip.with_audio(audio_clip)
 
         # Write final video with audio
-        clip.write_videofile(str(final_path), codec='libx264', audio_codec='aac', logger=None)
+        # Explicitly set temp_audiofile to be in the temp dir so it gets cleaned up
+        temp_audiofile = Path(temp_dir) / "temp-audio.m4a"
+        clip.write_videofile(
+            str(final_path), 
+            codec='libx264', 
+            audio_codec='aac', 
+            logger=None,
+            temp_audiofile=str(temp_audiofile)
+        )
 
     finally:
         # Close clips in reverse order of creation
