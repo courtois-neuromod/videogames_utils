@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Iterable
 
 import numpy as np
-from moviepy.editor import ImageSequenceClip, AudioFileClip
+from moviepy import ImageSequenceClip, AudioFileClip
 from PIL import Image
 
 from .replay import write_wav
@@ -74,7 +74,7 @@ def make_mp4(
 
         # Add audio to video clip
         audio_clip = AudioFileClip(str(temp_audio))
-        clip = clip.set_audio(audio_clip)
+        clip = clip.with_audio(audio_clip)
 
         # Write final video with audio
         clip.write_videofile(str(final_path), codec='libx264', audio_codec='aac', logger=None)
