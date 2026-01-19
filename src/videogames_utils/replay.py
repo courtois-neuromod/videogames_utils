@@ -71,26 +71,70 @@ def get_variables_from_replay(
     game=None,
     scenario=None,
     inttype=retro.data.Integrations.CUSTOM_ONLY,
-    collect_states=False,
-) -> Tuple[dict, List[dict], List[np.ndarray], List[bytes], np.ndarray, int]:
-    """Replay the bk2 file and return game variables and frames.
+) -> Tuple[dict, List[dict], List[np.ndarray], np.ndarray, int]:
+    """Replay the bk2 file and return game variables and frames (no states).
+    
+    For memory efficiency, states are NOT collected. Use get_variables_from_replay_streaming
+    if you need states - it writes them directly to HDF5.
+    
+    Returns:
+        Tuple of (variables, info, frames, audio, audio_rate).
+    """
+    replay = replay_bk2(
+        bk2_fpath,
+        skip_first_step=skip_first_step,
+        state=state,
+        game=game,
+        scenario=scenario,
+        inttype=inttype,
+    )
+    replay_frames = []
+    replay_keys = []
+    replay_info = []
+    audio_chunks: List[np.ndarray] = []
+    audio_rate = 0
+
+    for frame, keys, annotations, audio_chunk, chunk_rate, _, actions, state in replay:
+        replay_keys.append(keys)
+        replay_info.append(annotations["info"])
+        replay_frames.append(frame)
+        if audio_chunk.size:
+            audio_chunks.append(audio_chunk)
+        audio_rate = chunk_rate
+
+    repetition_variables = reformat_info(replay_info, replay_keys, bk2_fpath, actions)
+    audio_track = assemble_audio(audio_chunks)
+    return repetition_variables, replay_info, replay_frames, audio_track, audio_rate
+
+
+def get_variables_from_replay_streaming(
+    bk2_fpath,
+    states_output_path,
+    skip_first_step=True,
+    state=State.DEFAULT,
+    game=None,
+    scenario=None,
+    inttype=retro.data.Integrations.CUSTOM_ONLY,
+) -> Tuple[dict, List[dict], List[np.ndarray], np.ndarray, int]:
+    """Replay the bk2 file, streaming states to HDF5 to avoid memory issues.
+    
+    States are written directly to an HDF5 file with gzip compression during replay.
+    Each state is ~1MB uncompressed but compresses to ~50-100KB.
     
     Args:
         bk2_fpath: Path to the bk2 file.
+        states_output_path: Path for the output HDF5 file containing states.
         skip_first_step: Whether to skip the first step.
         state: Initial state for the emulator.
         game: Game name (inferred from bk2 if None).
         scenario: Scenario name.
         inttype: Integration type.
-        collect_states: If True, collect emulator states (compressed with zlib).
-                       Set to False to save memory when states are not needed.
     
     Returns:
-        Tuple of (variables, info, frames, states, audio, audio_rate).
-        If collect_states=False, states will be an empty list.
-        If collect_states=True, states are zlib-compressed bytes.
+        Tuple of (variables, info, frames, audio, audio_rate).
+        States are written to states_output_path as HDF5.
     """
-    import zlib
+    import h5py
     
     replay = replay_bk2(
         bk2_fpath,
@@ -103,25 +147,45 @@ def get_variables_from_replay(
     replay_frames = []
     replay_keys = []
     replay_info = []
-    replay_states = []
-    annotations = {}
     audio_chunks: List[np.ndarray] = []
     audio_rate = 0
-
-    for frame, keys, annotations, audio_chunk, chunk_rate, _, actions, state in replay:
-        replay_keys.append(keys)
-        replay_info.append(annotations["info"])
-        replay_frames.append(frame)
-        if collect_states:
-            # Compress state on-the-fly (saves ~90% memory - 1MB -> ~100KB per state)
-            replay_states.append(zlib.compress(state, level=1))
-        if audio_chunk.size:
-            audio_chunks.append(audio_chunk)
-        audio_rate = chunk_rate
+    
+    # Stream states to HDF5 with compression
+    with h5py.File(states_output_path, 'w') as hf:
+        states_dataset = None
+        frame_idx = 0
+        
+        for frame, keys, annotations, audio_chunk, chunk_rate, _, actions, emu_state in replay:
+            replay_keys.append(keys)
+            replay_info.append(annotations["info"])
+            replay_frames.append(frame)
+            if audio_chunk.size:
+                audio_chunks.append(audio_chunk)
+            audio_rate = chunk_rate
+            
+            # Convert state bytes to uint8 array and write to HDF5
+            state_array = np.frombuffer(emu_state, dtype=np.uint8)
+            
+            if states_dataset is None:
+                # Create dataset on first frame with compression
+                states_dataset = hf.create_dataset(
+                    'states',
+                    shape=(0, len(state_array)),
+                    maxshape=(None, len(state_array)),
+                    dtype=np.uint8,
+                    chunks=(1, len(state_array)),
+                    compression='gzip',
+                    compression_opts=1,  # Fast compression
+                )
+            
+            # Append this state
+            states_dataset.resize(frame_idx + 1, axis=0)
+            states_dataset[frame_idx] = state_array
+            frame_idx += 1
 
     repetition_variables = reformat_info(replay_info, replay_keys, bk2_fpath, actions)
     audio_track = assemble_audio(audio_chunks)
-    return repetition_variables, replay_info, replay_frames, replay_states, audio_track, audio_rate
+    return repetition_variables, replay_info, replay_frames, audio_track, audio_rate
 
 def reformat_info(info, keys, bk2_fpath, actions):
     """Create a structured dictionary from replay info."""
