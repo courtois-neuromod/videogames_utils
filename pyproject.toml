@@ -3,7 +3,7 @@ requires = ["setuptools>=65", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cneuromod_vg_utils"
+name = "videogames_utils"
 version = "0.1.0"
 description = "Utilities for CNeuroMod videogame data"
 readme = "README.md"
@@ -14,7 +14,7 @@ dependencies = [
     "stable-retro",
     "numpy",
     "Pillow",
-    "scikit-video",
+    "moviepy",
     "opencv-python",
 ]
 

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Iterable
 
 import numpy as np
-import skvideo.io
+from moviepy.editor import ImageSequenceClip, AudioFileClip
 from PIL import Image
 
 from .replay import write_wav
@@ -38,57 +38,51 @@ def make_mp4(
     sample_rate: int | None = None,
     fps: int = 60,
 ) -> None:
-    """Create an MP4 file from a list of frames, with optional audio multiplexing."""
+    """Create an MP4 file from a list of frames, with optional audio multiplexing using moviepy."""
 
-    temp_dir = tempfile.mkdtemp(prefix="cneuromod_vg_utils_")
-    temp_video = Path(temp_dir) / "video_only.mp4"
+    # Convert frames to list if not already (moviepy needs list)
+    frame_list = list(selected_frames)
 
-    writer = skvideo.io.FFmpegWriter(
-        str(temp_video), inputdict={"-r": str(fps)}, outputdict={"-r": str(fps)}
-    )
-    for frame in selected_frames:
+    # Convert frames to RGB format expected by moviepy
+    processed_frames = []
+    for frame in frame_list:
         im = Image.new("RGB", (frame.shape[1], frame.shape[0]), color="white")
         im.paste(Image.fromarray(frame), (0, 0))
-        writer.writeFrame(np.array(im))
-    writer.close()
+        processed_frames.append(np.array(im))
+
+    # Create video clip from frames
+    clip = ImageSequenceClip(processed_frames, fps=fps)
 
     final_path = Path(movie_fname)
 
     if audio is None or sample_rate is None:
-        temp_video.replace(final_path)
-        os.rmdir(temp_dir)
+        # Write video without audio
+        clip.write_videofile(str(final_path), codec='libx264', audio=False, logger=None)
+        clip.close()
         return
 
-    if audio.dtype != np.int16:
-        logging.info("Casting audio to int16 before muxing")
-        audio = audio.astype(np.int16)
-
+    # Handle audio
+    temp_dir = tempfile.mkdtemp(prefix="videogames_utils_")
     temp_audio = Path(temp_dir) / "audio.wav"
-    write_wav(audio, sample_rate, str(temp_audio))
-
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-i",
-        str(temp_video),
-        "-i",
-        str(temp_audio),
-        "-c:v",
-        "copy",
-        "-c:a",
-        "aac",
-        "-shortest",
-        str(final_path),
-    ]
 
     try:
-        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    except FileNotFoundError as exc:
-        raise RuntimeError("ffmpeg binary is required to mux audio into MP4") from exc
+        if audio.dtype != np.int16:
+            logging.info("Casting audio to int16 before saving")
+            audio = audio.astype(np.int16)
+
+        write_wav(audio, sample_rate, str(temp_audio))
+
+        # Add audio to video clip
+        audio_clip = AudioFileClip(str(temp_audio))
+        clip = clip.set_audio(audio_clip)
+
+        # Write final video with audio
+        clip.write_videofile(str(final_path), codec='libx264', audio_codec='aac', logger=None)
+
     finally:
+        clip.close()
         try:
             temp_audio.unlink(missing_ok=True)
-            temp_video.unlink(missing_ok=True)
             os.rmdir(temp_dir)
         except OSError:
             pass
