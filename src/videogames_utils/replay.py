@@ -71,8 +71,27 @@ def get_variables_from_replay(
     game=None,
     scenario=None,
     inttype=retro.data.Integrations.CUSTOM_ONLY,
+    collect_states=False,
 ) -> Tuple[dict, List[dict], List[np.ndarray], List[bytes], np.ndarray, int]:
-    """Replay the bk2 file and return game variables and frames."""
+    """Replay the bk2 file and return game variables and frames.
+    
+    Args:
+        bk2_fpath: Path to the bk2 file.
+        skip_first_step: Whether to skip the first step.
+        state: Initial state for the emulator.
+        game: Game name (inferred from bk2 if None).
+        scenario: Scenario name.
+        inttype: Integration type.
+        collect_states: If True, collect emulator states (compressed with zlib).
+                       Set to False to save memory when states are not needed.
+    
+    Returns:
+        Tuple of (variables, info, frames, states, audio, audio_rate).
+        If collect_states=False, states will be an empty list.
+        If collect_states=True, states are zlib-compressed bytes.
+    """
+    import zlib
+    
     replay = replay_bk2(
         bk2_fpath,
         skip_first_step=skip_first_step,
@@ -93,17 +112,14 @@ def get_variables_from_replay(
         replay_keys.append(keys)
         replay_info.append(annotations["info"])
         replay_frames.append(frame)
-        replay_states.append(state)
+        if collect_states:
+            # Compress state on-the-fly (saves ~90% memory - 1MB -> ~100KB per state)
+            replay_states.append(zlib.compress(state, level=1))
         if audio_chunk.size:
             audio_chunks.append(audio_chunk)
         audio_rate = chunk_rate
 
     repetition_variables = reformat_info(replay_info, replay_keys, bk2_fpath, actions)
-
-    #if not annotations.get("done", False):
-    #    logging.warning(
-    #        f"Done condition not satisfied for {bk2_fpath}. Consider changing skip_first_step."
-    #    )
     audio_track = assemble_audio(audio_chunks)
     return repetition_variables, replay_info, replay_frames, replay_states, audio_track, audio_rate
 
