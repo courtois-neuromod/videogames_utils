@@ -12,7 +12,7 @@ from stable_retro.enums import State
 def replay_bk2(
     bk2_path,
     skip_first_step: bool = False,
-    state: State = State.DEFAULT,
+    state: State = State.NONE,
     game: str | None = None,
     scenario: str | None = None,
     inttype: retro.data.Integrations = retro.data.Integrations.CUSTOM_ONLY,
@@ -71,7 +71,7 @@ def replay_bk2(
 def get_variables_from_replay(
     bk2_fpath,
     skip_first_step=True,
-    state=State.DEFAULT,
+    state=State.NONE,
     game=None,
     scenario=None,
     inttype=retro.data.Integrations.CUSTOM_ONLY,
