@@ -5,8 +5,8 @@ import os.path as op
 from typing import Iterable, List, Tuple
 
 import numpy as np
-import retro
-from retro.enums import State
+import stable_retro as retro
+from stable_retro.enums import State
 
 
 def replay_bk2(
