@@ -100,7 +100,7 @@ class TimeseriesWidget(QWidget):
         # Plot area with scroll (right)
         self.plot_scroll = QScrollArea()
         self.plot_scroll.setWidgetResizable(True)
-        self.plot_scroll.setMinimumWidth(600)
+        self.plot_scroll.setMinimumWidth(300)
 
         self.plot_widget = pg.GraphicsLayoutWidget()
         self.plot_scroll.setWidget(self.plot_widget)

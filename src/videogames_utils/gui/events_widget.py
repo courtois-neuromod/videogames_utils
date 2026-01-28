@@ -30,12 +30,14 @@ class EventsWidget(QWidget):
     def init_ui(self):
         """Initialize the user interface"""
         layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
 
         events_group = QGroupBox("Active Events")
         events_layout = QVBoxLayout()
+        events_layout.setContentsMargins(4, 4, 4, 4)
 
         self.events_list = QListWidget()
-        self.events_list.setMaximumHeight(150)
+        self.events_list.setMaximumHeight(80)  # Reduced height
         events_layout.addWidget(self.events_list)
 
         self.status_label = QLabel("No events loaded")

@@ -15,8 +15,8 @@ class ControllerWidget(QWidget):
         super().__init__(parent)
         self.button_states = {}
         self.button_list = []
-        self.setMinimumSize(300, 250)
-        self.setMaximumWidth(400)
+        self.setMinimumSize(250, 150)
+        self.setMaximumSize(400, 200)
 
     def set_buttons(self, button_list: List[str]):
         """Set the list of buttons to display"""
@@ -40,61 +40,61 @@ class ControllerWidget(QWidget):
         # Title
         painter.setPen(QColor(200, 200, 200))
         font = QFont()
-        font.setPointSize(10)
+        font.setPointSize(9)
         font.setBold(True)
         painter.setFont(font)
-        painter.drawText(10, 20, "CONTROLLER")
+        painter.drawText(10, 15, "CONTROLLER")
 
-        # D-Pad (left side)
-        dpad_x = 50
-        dpad_y = 60
-        button_size = 35
+        # D-Pad (left side) - scaled down
+        dpad_x = 30
+        dpad_y = 35
+        button_size = 25
 
         self._draw_dpad_button(painter, dpad_x + button_size, dpad_y, button_size, "UP", "↑")
         self._draw_dpad_button(painter, dpad_x, dpad_y + button_size, button_size, "LEFT", "←")
         self._draw_dpad_button(painter, dpad_x + button_size * 2, dpad_y + button_size, button_size, "RIGHT", "→")
         self._draw_dpad_button(painter, dpad_x + button_size, dpad_y + button_size * 2, button_size, "DOWN", "↓")
 
-        # Action buttons (right side)
-        action_x = 200
-        action_y = 80
-        radius = 20
+        # Action buttons (right side) - scaled down
+        action_x = 160
+        action_y = 60
+        radius = 15
 
         # Check which buttons are available
         has_xy = 'X' in self.button_list or 'Y' in self.button_list
         has_lr = 'L' in self.button_list or 'R' in self.button_list
 
         if has_xy:
-            # SNES-style layout (X, Y, A, B)
-            self._draw_round_button(painter, action_x, action_y - 35, radius, "X")
-            self._draw_round_button(painter, action_x - 35, action_y, radius, "Y")
-            self._draw_round_button(painter, action_x + 35, action_y, radius, "A")
-            self._draw_round_button(painter, action_x, action_y + 35, radius, "B")
+            # SNES-style layout (X, Y, A, B) - scaled down
+            self._draw_round_button(painter, action_x, action_y - 25, radius, "X")
+            self._draw_round_button(painter, action_x - 25, action_y, radius, "Y")
+            self._draw_round_button(painter, action_x + 25, action_y, radius, "A")
+            self._draw_round_button(painter, action_x, action_y + 25, radius, "B")
         else:
-            # NES/Genesis-style layout (just A, B)
+            # NES/Genesis-style layout (just A, B) - scaled down
             self._draw_round_button(painter, action_x, action_y, radius, "B")
-            self._draw_round_button(painter, action_x + 45, action_y, radius, "A")
+            self._draw_round_button(painter, action_x + 32, action_y, radius, "A")
 
             # Add C button for Genesis
             if 'C' in self.button_list:
-                self._draw_round_button(painter, action_x + 90, action_y, radius, "C")
+                self._draw_round_button(painter, action_x + 64, action_y, radius, "C")
 
-        # Shoulder buttons
+        # Shoulder buttons - scaled down
         if has_lr:
-            shoulder_y = 40
+            shoulder_y = 25
             if 'L' in self.button_list:
-                self._draw_shoulder_button(painter, 30, shoulder_y, "L")
+                self._draw_shoulder_button(painter, 20, shoulder_y, "L")
             if 'R' in self.button_list:
-                self._draw_shoulder_button(painter, 230, shoulder_y, "R")
+                self._draw_shoulder_button(painter, 180, shoulder_y, "R")
 
-        # Start/Select
-        start_y = 180
+        # Start/Select - scaled down
+        start_y = 130
         if 'SELECT' in self.button_list:
-            self._draw_small_button(painter, 80, start_y, "SELECT")
+            self._draw_small_button(painter, 60, start_y, "SELECT")
         if 'START' in self.button_list:
-            self._draw_small_button(painter, 180, start_y, "START")
+            self._draw_small_button(painter, 140, start_y, "START")
         if 'MODE' in self.button_list:
-            self._draw_small_button(painter, 130, start_y, "MODE")
+            self._draw_small_button(painter, 100, start_y, "MODE")
 
     def _draw_dpad_button(self, painter: QPainter, x: int, y: int, size: int, name: str, symbol: str):
         """Draw a D-pad button"""
@@ -110,10 +110,10 @@ class ControllerWidget(QWidget):
         painter.setPen(QPen(QColor(200, 200, 200), 2))
         painter.drawRect(x, y, size, size)
 
-        # Symbol
+        # Symbol - smaller font
         painter.setPen(QColor(255, 255, 255))
         font = QFont()
-        font.setPointSize(16)
+        font.setPointSize(12)
         font.setBold(True)
         painter.setFont(font)
         painter.drawText(QRect(x, y, size, size), Qt.AlignmentFlag.AlignCenter, symbol)
@@ -132,10 +132,10 @@ class ControllerWidget(QWidget):
         painter.setPen(QPen(QColor(200, 200, 200), 2))
         painter.drawEllipse(x - radius, y - radius, radius * 2, radius * 2)
 
-        # Label
+        # Label - smaller font
         painter.setPen(QColor(255, 255, 255))
         font = QFont()
-        font.setPointSize(12)
+        font.setPointSize(10)
         font.setBold(True)
         painter.setFont(font)
         painter.drawText(QRect(x - radius, y - radius, radius * 2, radius * 2),
@@ -145,7 +145,7 @@ class ControllerWidget(QWidget):
         """Draw a shoulder button"""
         is_active = self.button_states.get(name, False)
 
-        width, height = 50, 25
+        width, height = 40, 20
 
         # Fill color
         if is_active:
@@ -169,7 +169,7 @@ class ControllerWidget(QWidget):
         """Draw a small button (START/SELECT/MODE)"""
         is_active = self.button_states.get(name, False)
 
-        width, height = 60, 20
+        width, height = 50, 16
 
         # Fill color
         if is_active:
@@ -181,10 +181,10 @@ class ControllerWidget(QWidget):
         painter.setPen(QPen(QColor(200, 200, 200), 1))
         painter.drawRoundedRect(x - width // 2, y, width, height, 3, 3)
 
-        # Label
+        # Label - smaller font
         painter.setPen(QColor(255, 255, 255))
         font = QFont()
-        font.setPointSize(8)
+        font.setPointSize(7)
         painter.setFont(font)
         painter.drawText(QRect(x - width // 2, y, width, height),
                         Qt.AlignmentFlag.AlignCenter, name)

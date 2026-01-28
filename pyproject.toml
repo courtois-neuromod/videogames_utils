@@ -20,6 +20,10 @@ dependencies = [
     "pyqtgraph",
     "pandas",
     "scipy",
+    "h5py",
+    "nibabel",
+    "nilearn",
+    "matplotlib",
 ]
 
 [tool.setuptools]

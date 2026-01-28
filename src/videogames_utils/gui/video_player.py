@@ -75,7 +75,6 @@ import stable_retro as retro
 
 from .utils import (detect_game_from_filename, find_rom_integration_path, load_variables_json,
                      is_first_replay_in_run, find_annotated_events_for_replay)
-from .controller_widget import ControllerWidget
 
 
 class VideoPlayer(QWidget):
@@ -83,6 +82,8 @@ class VideoPlayer(QWidget):
 
     frame_changed = pyqtSignal(int)  # Emits current frame index
     playback_finished = pyqtSignal()
+    button_list_changed = pyqtSignal(list)  # Emits list of button names
+    button_states_changed = pyqtSignal(dict)  # Emits dict of button states
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -101,30 +102,30 @@ class VideoPlayer(QWidget):
 
     def init_ui(self):
         """Initialize the user interface"""
-        layout = QHBoxLayout()
-
-        # Left section: Video and controls
-        video_section = QVBoxLayout()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
 
         # Video display
         video_group = QGroupBox("Replay Video")
         video_layout = QVBoxLayout()
+        video_layout.setContentsMargins(2, 2, 2, 2)  # Minimal padding
 
         self.video_label = AspectRatioLabel()
-        self.video_label.setMinimumSize(256, 240)  # NES native resolution
-        self.video_label.setMaximumWidth(480)  # Limit width to prevent too-wide display
+        self.video_label.setMinimumSize(256, 240)  # Minimum NES resolution
         self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.video_label.setStyleSheet("QLabel { background-color: black; }")
-        video_layout.addWidget(self.video_label, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.video_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        video_layout.addWidget(self.video_label)
 
         video_group.setLayout(video_layout)
-        video_group.setMaximumWidth(500)  # Limit video group width
-        video_section.addWidget(video_group)
+        video_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        video_group.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(video_group)
 
-        # Controls (under video only) - in a container to limit width
+        # Controls (under video only)
         controls_container = QWidget()
-        controls_container.setMaximumWidth(500)
         controls_layout = QVBoxLayout()
+        controls_layout.setContentsMargins(0, 0, 0, 0)
         controls_container.setLayout(controls_layout)
 
         # Buttons row
@@ -171,19 +172,7 @@ class VideoPlayer(QWidget):
         self.status_label = QLabel("No replay loaded")
         controls_layout.addWidget(self.status_label)
 
-        video_section.addWidget(controls_container, alignment=Qt.AlignmentFlag.AlignCenter)
-
-        layout.addLayout(video_section)
-
-        # Right section: Controller visualization
-        controller_group = QGroupBox("Controller")
-        controller_layout = QVBoxLayout()
-
-        self.controller_widget = ControllerWidget()
-        controller_layout.addWidget(self.controller_widget)
-
-        controller_group.setLayout(controller_layout)
-        layout.addWidget(controller_group)
+        layout.addWidget(controls_container)
 
         self.setLayout(layout)
 
@@ -252,9 +241,9 @@ class VideoPlayer(QWidget):
             variables_path = bk2_path.parent / (bk2_path.stem + '_variables.json')
             if variables_path.exists():
                 self.variables_data = load_variables_json(variables_path)
-                # Set up controller widget with button list
+                # Emit button list for external controller widget
                 button_list = self.variables_data.get('actions', [])
-                self.controller_widget.set_buttons(button_list)
+                self.button_list_changed.emit(button_list)
             else:
                 self.variables_data = {}
 
@@ -318,7 +307,7 @@ class VideoPlayer(QWidget):
                     button_data = self.variables_data[button]
                     if isinstance(button_data, list) and frame_idx < len(button_data):
                         button_states[button] = bool(button_data[frame_idx])
-            self.controller_widget.update_button_states(button_states)
+            self.button_states_changed.emit(button_states)
 
         # Emit signal
         self.frame_changed.emit(frame_idx)
