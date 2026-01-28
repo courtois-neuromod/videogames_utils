@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QSlider, QGroupBox, QSizePolicy
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QSize
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QSize, QElapsedTimer
 from PyQt6.QtGui import QImage, QPixmap, QResizeEvent
 
 
@@ -96,9 +96,15 @@ class VideoPlayer(QWidget):
 
         self.init_ui()
 
-        # Playback timer
+        # Playback timer - use precise timer for accurate 60Hz playback
         self.timer = QTimer()
+        self.timer.setTimerType(Qt.TimerType.PreciseTimer)
         self.timer.timeout.connect(self.advance_frame)
+        
+        # Elapsed timer for frame rate compensation
+        self.elapsed_timer = QElapsedTimer()
+        self.last_frame_time = 0
+        self.frame_accumulator = 0.0  # Accumulate fractional frames
 
     def init_ui(self):
         """Initialize the user interface"""
@@ -327,9 +333,15 @@ class VideoPlayer(QWidget):
         self.is_playing = True
         self.play_button.setText("Pause")
 
-        # Set timer interval based on FPS
-        interval_ms = int(1000 / self.fps)
-        self.timer.start(interval_ms)
+        # Reset timing - record where we started from for time-based advancement
+        self._playback_start_frame = self.current_frame_idx
+        self.elapsed_timer.start()
+        self.last_frame_time = 0
+        self.frame_accumulator = 0.0
+        
+        # Use a fast timer (every 8ms ~= 125Hz) for smooth catchup
+        # The advance_frame method will handle actual frame timing
+        self.timer.start(8)
 
     def pause(self):
         """Pause playback"""
@@ -338,11 +350,31 @@ class VideoPlayer(QWidget):
         self.timer.stop()
 
     def advance_frame(self):
-        """Advance to next frame (called by timer)"""
-        if self.current_frame_idx < len(self.frames) - 1:
-            self.display_frame(self.current_frame_idx + 1)
-        else:
-            # Reached end
+        """Advance to next frame (called by timer)
+        
+        Uses elapsed time to determine how many frames to advance,
+        ensuring accurate 60Hz playback even if individual frames
+        take longer to process.
+        """
+        if not self.elapsed_timer.isValid():
+            return
+            
+        # Calculate elapsed time since playback started
+        elapsed_ms = self.elapsed_timer.elapsed()
+        
+        # Calculate which frame we should be on based on elapsed time
+        target_frame_float = (elapsed_ms / 1000.0) * self.fps
+        target_frame = int(target_frame_float) + self._playback_start_frame
+        
+        # Clamp to valid range
+        target_frame = min(target_frame, len(self.frames) - 1)
+        
+        # Only update if we need to advance
+        if target_frame > self.current_frame_idx:
+            self.display_frame(target_frame)
+        
+        # Check if we've reached the end
+        if self.current_frame_idx >= len(self.frames) - 1:
             self.pause()
             self.playback_finished.emit()
 

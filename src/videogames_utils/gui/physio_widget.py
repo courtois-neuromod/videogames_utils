@@ -58,6 +58,10 @@ class PhysioWidget(QWidget):
         
         # Display settings
         self.window_duration = 5.0  # Visible window in seconds
+        
+        # Throttling: track last displayed sample to skip redundant updates
+        self._last_end_sample = -1
+        self._min_sample_step = 50  # Minimum samples to change before re-rendering (~50ms at 1kHz)
         self.selected_channels = ['PPG', 'ECG', 'RSP', 'EDA']  # Default channels
         self.show_events = True
         
@@ -147,6 +151,9 @@ class PhysioWidget(QWidget):
             self.fps = fps
             self.replay_duration = replay_duration
             self.sampling_rate = sampling_rate
+            
+            # Reset throttling state
+            self._last_end_sample = -1
             
             # Update plots
             self._setup_plots()
@@ -241,6 +248,11 @@ class PhysioWidget(QWidget):
         # Window shows [time_in_run - window_duration, time_in_run]
         end_sample = int(time_in_run * self.sampling_rate)
         start_sample = int((time_in_run - self.window_duration) * self.sampling_rate)
+        
+        # Throttle: skip update if sample position hasn't changed enough
+        if abs(end_sample - self._last_end_sample) < self._min_sample_step:
+            return
+        self._last_end_sample = end_sample
         
         # Clamp to valid range
         start_sample = max(0, start_sample)

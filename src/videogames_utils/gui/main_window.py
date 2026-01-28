@@ -34,6 +34,11 @@ class ReplayVisualizerApp(QMainWindow):
         self.current_timeseries_path = None
         self.current_atlas_path = None
         self.current_run_info = None  # (session, run, onset_time)
+        
+        # Throttling for heavy widget updates (glassbrain, physio)
+        self._last_heavy_update_frame = -1
+        self._heavy_update_interval = 3  # Update every 3 frames (~20Hz for heavy widgets)
+        
         self.init_ui()
 
     def init_ui(self):
@@ -438,22 +443,34 @@ class ReplayVisualizerApp(QMainWindow):
             return None
 
     def on_frame_changed(self, frame_idx: int):
-        """Handle frame change from video player"""
-        # Update timeseries position
+        """Handle frame change from video player
+        
+        Lightweight updates (timeseries, events) happen every frame.
+        Heavy updates (glassbrain, physio) are throttled during playback,
+        but always update immediately on manual seeks (slider scrubbing).
+        """
+        # Lightweight updates - every frame
         self.timeseries_widget.update_position(frame_idx)
-
-        # Update events
         self.events_widget.update_position(frame_idx)
 
-        # Update glassbrain
-        self.glassbrain_widget.update_position(frame_idx)
+        # Detect manual seek: if frame jump is larger than normal playback would produce
+        # Normal playback advances by 1-3 frames at a time; larger jumps indicate seeking
+        frame_delta = abs(frame_idx - self._last_heavy_update_frame)
+        is_seeking = frame_delta > self._heavy_update_interval * 2
+        
+        # Heavy updates - throttled during playback, immediate on seek
+        if is_seeking or frame_delta >= self._heavy_update_interval:
+            self._last_heavy_update_frame = frame_idx
+            
+            # Update glassbrain
+            self.glassbrain_widget.update_position(frame_idx)
 
-        # Update physio
-        self.physio_widget.update_position(frame_idx)
+            # Update physio
+            self.physio_widget.update_position(frame_idx)
 
-        # Update status bar
-        time_seconds = frame_idx / 60.0  # Assuming 60 FPS
-        self.status_bar.showMessage(f"Frame: {frame_idx} | Time: {time_seconds:.2f}s")
+            # Update status bar
+            time_seconds = frame_idx / 60.0  # Assuming 60 FPS
+            self.status_bar.showMessage(f"Frame: {frame_idx} | Time: {time_seconds:.2f}s")
 
     def on_button_list_changed(self, button_list):
         """Handle button list change from video player"""

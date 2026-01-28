@@ -364,15 +364,20 @@ class GlassBrainWidget(QWidget):
 
             # Calculate interpolation alpha (0 = current TR, 1 = next TR)
             alpha = tr_index_float - current_tr
+            
+            # Track current TR for display purposes
+            self.current_tr = current_tr
 
             # Check if current TR is in cache
             if current_tr not in self.brain_cache:
-                # If we have a last displayed brain, keep showing it
-                if self.last_displayed_brain is not None:
-                    brain_img = self.last_displayed_brain
-                else:
+                # TR not yet computed - show placeholder or last displayed brain
+                if self.last_displayed_brain is None:
                     # No brain to show yet
+                    self.brain_label.setText(f"Computing TR {current_tr}...")
                     return
+                else:
+                    # Keep showing last brain but with updated label
+                    brain_img = self.last_displayed_brain
             else:
                 current_brain = self.brain_cache[current_tr]
 
