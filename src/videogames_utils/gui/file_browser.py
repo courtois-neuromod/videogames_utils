@@ -55,10 +55,16 @@ class FileBrowser(QWidget):
         self.session_combo.addItem("All Sessions")
         self.session_combo.currentTextChanged.connect(self.update_replay_tree)
 
+        self.level_combo = QComboBox()
+        self.level_combo.addItem("All Levels")
+        self.level_combo.currentTextChanged.connect(self.update_replay_tree)
+
         filter_layout.addWidget(QLabel("Subject:"))
         filter_layout.addWidget(self.subject_combo)
         filter_layout.addWidget(QLabel("Session:"))
         filter_layout.addWidget(self.session_combo)
+        filter_layout.addWidget(QLabel("Level:"))
+        filter_layout.addWidget(self.level_combo)
 
         filter_group.setLayout(filter_layout)
         layout.addWidget(filter_group)
@@ -137,9 +143,10 @@ class FileBrowser(QWidget):
         self.replays.sort(key=lambda r: (r['subject'], r['session'], r['level'], r['rep']))
 
     def update_filters(self):
-        """Update subject and session filter dropdowns"""
+        """Update subject, session, and level filter dropdowns"""
         subjects = sorted(set(r['subject'] for r in self.replays))
         sessions = sorted(set(r['session'] for r in self.replays))
+        levels = sorted(set(r['level'] for r in self.replays))
 
         # Update subject combo
         current_subject = self.subject_combo.currentText()
@@ -157,12 +164,21 @@ class FileBrowser(QWidget):
         if current_session in sessions:
             self.session_combo.setCurrentText(current_session)
 
+        # Update level combo
+        current_level = self.level_combo.currentText()
+        self.level_combo.clear()
+        self.level_combo.addItem("All Levels")
+        self.level_combo.addItems(levels)
+        if current_level in levels:
+            self.level_combo.setCurrentText(current_level)
+
     def update_replay_tree(self):
         """Update the replay tree with filtered replays"""
         self.replay_tree.clear()
 
         subject_filter = self.subject_combo.currentText()
         session_filter = self.session_combo.currentText()
+        level_filter = self.level_combo.currentText()
 
         filtered_replays = self.replays
 
@@ -171,6 +187,9 @@ class FileBrowser(QWidget):
 
         if session_filter != "All Sessions":
             filtered_replays = [r for r in filtered_replays if r['session'] == session_filter]
+
+        if level_filter != "All Levels":
+            filtered_replays = [r for r in filtered_replays if r['level'] == level_filter]
 
         # Add to tree
         for replay in filtered_replays:
