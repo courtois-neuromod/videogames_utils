@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QStatusBar, QMenuBar, QMenu, QFileDialog, QMessageBox, QTabWidget
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QAction
+from PyQt6.QtGui import QAction, QIcon, QPixmap
 
 from .file_browser import FileBrowser
 from .video_player import VideoPlayer
@@ -38,9 +38,14 @@ class ReplayVisualizerApp(QMainWindow):
 
     def init_ui(self):
         """Initialize the user interface"""
-        self.setWindowTitle("Video Game Replay Visualizer")
+        self.setWindowTitle("CNeuromod Videogame Replay Visualizer")
         self.setGeometry(100, 100, 1400, 900)
         self.setMinimumSize(800, 600)
+        
+        # Set window icon
+        icon_path = Path(__file__).parent / "resources" / "logo_neuromod_small.png"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
 
         # Create menu bar
         self.create_menu_bar()
@@ -81,8 +86,27 @@ class ReplayVisualizerApp(QMainWindow):
         right_column_layout.setContentsMargins(0, 0, 0, 0)
         right_column.setLayout(right_column_layout)
 
+        # Controller row: controller + logo
+        controller_row = QWidget()
+        controller_row_layout = QHBoxLayout()
+        controller_row_layout.setContentsMargins(0, 0, 0, 0)
+        controller_row.setLayout(controller_row_layout)
+
         self.controller_widget = ControllerWidget()
-        right_column_layout.addWidget(self.controller_widget)
+        controller_row_layout.addWidget(self.controller_widget)
+
+        # Add logo to the right of controller
+        from PyQt6.QtWidgets import QLabel
+        logo_label = QLabel()
+        logo_path = Path(__file__).parent / "resources" / "logo_neuromod_small.png"
+        if logo_path.exists():
+            pixmap = QPixmap(str(logo_path))
+            # Scale to reasonable size while keeping aspect ratio
+            scaled_pixmap = pixmap.scaledToHeight(80, Qt.TransformationMode.SmoothTransformation)
+            logo_label.setPixmap(scaled_pixmap)
+        controller_row_layout.addWidget(logo_label)
+
+        right_column_layout.addWidget(controller_row)
 
         self.events_widget = EventsWidget()
         right_column_layout.addWidget(self.events_widget)

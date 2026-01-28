@@ -5,6 +5,7 @@ Interactive tool for exploring CNeuroMod videogame datasets
 
 import argparse
 import os
+from pathlib import Path
 from .main_window import ReplayVisualizerApp
 
 
@@ -12,6 +13,7 @@ def main():
     """Entry point for the GUI application"""
     import sys
     from PyQt6.QtWidgets import QApplication
+    from PyQt6.QtGui import QIcon
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(
@@ -36,6 +38,11 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("VG Replay Visualizer")
+    
+    # Set application icon
+    icon_path = Path(__file__).parent / "resources" / "logo_neuromod_small.png"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
 
     window = ReplayVisualizerApp(n_jobs=n_jobs)
     window.show()
