@@ -1,0 +1,407 @@
+"""
+Video player widget for .bk2 replay playback
+"""
+
+from pathlib import Path
+from typing import Optional, Dict
+import numpy as np
+
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QSlider, QGroupBox, QSizePolicy
+)
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QSize
+from PyQt6.QtGui import QImage, QPixmap, QResizeEvent
+
+
+class AspectRatioLabel(QLabel):
+    """QLabel that maintains aspect ratio"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.aspect_ratio = 256.0 / 240.0  # NES aspect ratio
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+    def setPixmap(self, pixmap):
+        """Override setPixmap to store original and scale properly"""
+        self._pixmap = pixmap
+        if pixmap:
+            self.aspect_ratio = pixmap.width() / pixmap.height()
+        super().setPixmap(self._scale_pixmap())
+
+    def _scale_pixmap(self):
+        """Scale pixmap to fit while maintaining aspect ratio"""
+        if not hasattr(self, '_pixmap') or self._pixmap is None:
+            return QPixmap()
+
+        label_width = self.width()
+        label_height = self.height()
+
+        # Calculate scaled size maintaining aspect ratio
+        if label_width / label_height > self.aspect_ratio:
+            # Label is wider than image aspect ratio, fit to height
+            scaled_height = label_height
+            scaled_width = int(scaled_height * self.aspect_ratio)
+        else:
+            # Label is taller than image aspect ratio, fit to width
+            scaled_width = label_width
+            scaled_height = int(scaled_width / self.aspect_ratio)
+
+        return self._pixmap.scaled(
+            scaled_width, scaled_height,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation
+        )
+
+    def resizeEvent(self, event):
+        """Handle resize to rescale pixmap"""
+        super().resizeEvent(event)
+        if hasattr(self, '_pixmap') and self._pixmap is not None:
+            super(AspectRatioLabel, self).setPixmap(self._scale_pixmap())
+
+    def sizeHint(self):
+        """Provide size hint based on aspect ratio"""
+        if hasattr(self, '_pixmap') and self._pixmap is not None:
+            return self._pixmap.size()
+        return QSize(256, 240)  # Default NES resolution
+
+    def minimumSizeHint(self):
+        """Provide minimum size hint"""
+        return QSize(256, 240)
+
+from videogames_utils.replay import replay_bk2
+from stable_retro.enums import State
+import stable_retro as retro
+
+from .utils import (detect_game_from_filename, find_rom_integration_path, load_variables_json,
+                     is_first_replay_in_run, find_annotated_events_for_replay)
+from .controller_widget import ControllerWidget
+
+
+class VideoPlayer(QWidget):
+    """Widget for playing back .bk2 replay files"""
+
+    frame_changed = pyqtSignal(int)  # Emits current frame index
+    playback_finished = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.frames = []
+        self.current_frame_idx = 0
+        self.is_playing = False
+        self.fps = 60  # Default NES/Genesis FPS
+        self.replay_info = None
+        self.variables_data = {}  # Game variables including button states
+
+        self.init_ui()
+
+        # Playback timer
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.advance_frame)
+
+    def init_ui(self):
+        """Initialize the user interface"""
+        layout = QHBoxLayout()
+
+        # Left section: Video and controls
+        video_section = QVBoxLayout()
+
+        # Video display
+        video_group = QGroupBox("Replay Video")
+        video_layout = QVBoxLayout()
+
+        self.video_label = AspectRatioLabel()
+        self.video_label.setMinimumSize(256, 240)  # NES native resolution
+        self.video_label.setMaximumWidth(480)  # Limit width to prevent too-wide display
+        self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.video_label.setStyleSheet("QLabel { background-color: black; }")
+        video_layout.addWidget(self.video_label, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        video_group.setLayout(video_layout)
+        video_group.setMaximumWidth(500)  # Limit video group width
+        video_section.addWidget(video_group)
+
+        # Controls (under video only) - in a container to limit width
+        controls_container = QWidget()
+        controls_container.setMaximumWidth(500)
+        controls_layout = QVBoxLayout()
+        controls_container.setLayout(controls_layout)
+
+        # Buttons row
+        buttons_layout = QHBoxLayout()
+
+        self.play_button = QPushButton("Play")
+        self.play_button.clicked.connect(self.toggle_playback)
+        self.play_button.setEnabled(False)
+        buttons_layout.addWidget(self.play_button)
+
+        self.backward_button = QPushButton("<<")
+        self.backward_button.clicked.connect(self.step_backward)
+        self.backward_button.setEnabled(False)
+        buttons_layout.addWidget(self.backward_button)
+
+        self.forward_button = QPushButton(">>")
+        self.forward_button.clicked.connect(self.step_forward)
+        self.forward_button.setEnabled(False)
+        buttons_layout.addWidget(self.forward_button)
+
+        self.reset_button = QPushButton("Reset")
+        self.reset_button.clicked.connect(self.reset_playback)
+        self.reset_button.setEnabled(False)
+        buttons_layout.addWidget(self.reset_button)
+
+        controls_layout.addLayout(buttons_layout)
+
+        # Frame slider (under buttons)
+        slider_layout = QHBoxLayout()
+
+        self.frame_slider = QSlider(Qt.Orientation.Horizontal)
+        self.frame_slider.setMinimum(0)
+        self.frame_slider.setMaximum(0)
+        self.frame_slider.valueChanged.connect(self.on_slider_changed)
+        self.frame_slider.setEnabled(False)
+        slider_layout.addWidget(self.frame_slider)
+
+        self.frame_label = QLabel("Frame: 0 / 0")
+        slider_layout.addWidget(self.frame_label)
+
+        controls_layout.addLayout(slider_layout)
+
+        # Status label
+        self.status_label = QLabel("No replay loaded")
+        controls_layout.addWidget(self.status_label)
+
+        video_section.addWidget(controls_container, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        layout.addLayout(video_section)
+
+        # Right section: Controller visualization
+        controller_group = QGroupBox("Controller")
+        controller_layout = QVBoxLayout()
+
+        self.controller_widget = ControllerWidget()
+        controller_layout.addWidget(self.controller_widget)
+
+        controller_group.setLayout(controller_layout)
+        layout.addWidget(controller_group)
+
+        self.setLayout(layout)
+
+    def load_replay(self, replay_info: Dict, dataset_path: Path):
+        """
+        Load a .bk2 replay file
+
+        Args:
+            replay_info: Dictionary with replay information (from get_replay_info)
+            dataset_path: Path to the dataset root
+        """
+        self.status_label.setText("Loading replay...")
+        self.frames = []
+        self.current_frame_idx = 0
+        self.replay_info = replay_info
+
+        bk2_path = replay_info['path']
+        game_type = detect_game_from_filename(bk2_path.name)
+
+        # Find the ROM integration directory
+        rom_integration_path = find_rom_integration_path(dataset_path, game_type)
+
+        if not rom_integration_path:
+            self.status_label.setText(f"Error: ROM not found for {game_type} in stimuli/")
+            raise FileNotFoundError(
+                f"ROM integration directory not found for {game_type}.\n"
+                f"Expected in: {dataset_path / 'stimuli'}\n"
+                f"Please ensure the ROM files are present in the dataset's stimuli/ folder."
+            )
+
+        try:
+            # Add ROM integration path to stable_retro's search paths
+            self.status_label.setText(f"Setting up ROM from {rom_integration_path.name}...")
+
+            # Add the parent directory (stimuli/) to retro's integration paths
+            retro.data.Integrations.add_custom_path(str(rom_integration_path.parent))
+
+            # Determine if we need to skip the first step
+            # First replay of each run needs skip_first_step=True
+            skip_first = replay_info.get('skip_first_step', False)
+
+            # Load frames from .bk2 replay
+            self.status_label.setText(f"Replaying {bk2_path.name}...")
+
+            replay_gen = replay_bk2(
+                str(bk2_path),
+                skip_first_step=skip_first,
+                state=State.NONE,
+                game=None,  # Auto-detect from .bk2
+                scenario=None,
+                inttype=retro.data.Integrations.CUSTOM_ONLY
+            )
+
+            frame_count = 0
+            for frame, keys, annotations, audio_chunk, audio_rate, truncate, actions, state in replay_gen:
+                self.frames.append(frame)
+                frame_count += 1
+
+                # Update status every 100 frames
+                if frame_count % 100 == 0:
+                    self.status_label.setText(f"Loading... {frame_count} frames")
+
+            self.status_label.setText(f"Loaded {len(self.frames)} frames")
+
+            # Load variables for button states
+            variables_path = bk2_path.parent / (bk2_path.stem + '_variables.json')
+            if variables_path.exists():
+                self.variables_data = load_variables_json(variables_path)
+                # Set up controller widget with button list
+                button_list = self.variables_data.get('actions', [])
+                self.controller_widget.set_buttons(button_list)
+            else:
+                self.variables_data = {}
+
+            # Setup controls
+            self.frame_slider.setMaximum(len(self.frames) - 1)
+            self.frame_slider.setValue(0)
+            self.frame_slider.setEnabled(True)
+
+            self.play_button.setEnabled(True)
+            self.forward_button.setEnabled(True)
+            self.backward_button.setEnabled(True)
+            self.reset_button.setEnabled(True)
+
+            # Display first frame
+            self.display_frame(0)
+
+        except Exception as e:
+            self.status_label.setText(f"Error loading replay: {e}")
+            print(f"Error loading replay: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def display_frame(self, frame_idx: int):
+        """Display a specific frame"""
+        if not self.frames or frame_idx < 0 or frame_idx >= len(self.frames):
+            return
+
+        self.current_frame_idx = frame_idx
+
+        # Get frame (numpy array in RGB or BGR format)
+        frame = self.frames[frame_idx]
+
+        # Convert to QImage
+        # stable_retro returns RGB, shape (H, W, 3)
+        height, width, channels = frame.shape
+        bytes_per_line = channels * width
+
+        q_image = QImage(
+            frame.data,
+            width,
+            height,
+            bytes_per_line,
+            QImage.Format.Format_RGB888
+        )
+
+        # Create pixmap and let AspectRatioLabel handle scaling
+        pixmap = QPixmap.fromImage(q_image)
+        self.video_label.setPixmap(pixmap)
+
+        # Update UI
+        self.frame_label.setText(f"Frame: {frame_idx} / {len(self.frames) - 1}")
+        self.frame_slider.blockSignals(True)
+        self.frame_slider.setValue(frame_idx)
+        self.frame_slider.blockSignals(False)
+
+        # Update controller button states
+        if self.variables_data:
+            button_states = {}
+            for button in self.variables_data.get('actions', []):
+                if button in self.variables_data:
+                    button_data = self.variables_data[button]
+                    if isinstance(button_data, list) and frame_idx < len(button_data):
+                        button_states[button] = bool(button_data[frame_idx])
+            self.controller_widget.update_button_states(button_states)
+
+        # Emit signal
+        self.frame_changed.emit(frame_idx)
+
+    def toggle_playback(self):
+        """Toggle play/pause"""
+        if self.is_playing:
+            self.pause()
+        else:
+            self.play()
+
+    def play(self):
+        """Start playback"""
+        if not self.frames:
+            return
+
+        self.is_playing = True
+        self.play_button.setText("Pause")
+
+        # Set timer interval based on FPS
+        interval_ms = int(1000 / self.fps)
+        self.timer.start(interval_ms)
+
+    def pause(self):
+        """Pause playback"""
+        self.is_playing = False
+        self.play_button.setText("Play")
+        self.timer.stop()
+
+    def advance_frame(self):
+        """Advance to next frame (called by timer)"""
+        if self.current_frame_idx < len(self.frames) - 1:
+            self.display_frame(self.current_frame_idx + 1)
+        else:
+            # Reached end
+            self.pause()
+            self.playback_finished.emit()
+
+    def step_forward(self):
+        """Step forward one frame"""
+        was_playing = self.is_playing
+        self.pause()
+
+        if self.current_frame_idx < len(self.frames) - 1:
+            self.display_frame(self.current_frame_idx + 1)
+
+        if was_playing:
+            self.play()
+
+    def step_backward(self):
+        """Step backward one frame"""
+        was_playing = self.is_playing
+        self.pause()
+
+        if self.current_frame_idx > 0:
+            self.display_frame(self.current_frame_idx - 1)
+
+        if was_playing:
+            self.play()
+
+    def reset_playback(self):
+        """Reset to the first frame"""
+        was_playing = self.is_playing
+        self.pause()
+        self.display_frame(0)
+
+    def on_slider_changed(self, value: int):
+        """Handle slider value change"""
+        if value != self.current_frame_idx:
+            self.display_frame(value)
+
+    def get_current_time(self) -> float:
+        """Get current playback time in seconds"""
+        if not self.frames:
+            return 0.0
+        return self.current_frame_idx / self.fps
+
+    def seek_to_time(self, time_seconds: float):
+        """Seek to a specific time in seconds"""
+        if not self.frames:
+            return
+
+        frame_idx = int(time_seconds * self.fps)
+        frame_idx = max(0, min(frame_idx, len(self.frames) - 1))
+        self.display_frame(frame_idx)
+

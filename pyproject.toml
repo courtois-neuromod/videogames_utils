@@ -16,6 +16,10 @@ dependencies = [
     "Pillow",
     "moviepy",
     "opencv-python",
+    "PyQt6",
+    "pyqtgraph",
+    "pandas",
+    "scipy",
 ]
 
 [tool.setuptools]
@@ -23,3 +27,6 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[project.scripts]
+vg-visualizer = "videogames_utils.gui:main"
