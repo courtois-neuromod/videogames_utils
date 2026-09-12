@@ -204,9 +204,11 @@ VOCABULARY: List[EventType] = [
               "The player activates a P-Switch, temporarily changing nearby bricks and "
               "coins.", ("mario3",), former=("P-Switch_activated",), durational=True),
     EventType("P-Switch_expired", "The temporary P-Switch effect ends.", ("mario3",)),
-    EventType("Goal_card_visible/{card_type}",
-              "The mushroom, flower or star goal card becomes visible at the end of the "
-              "level.", ("mario3",)),
+    EventType("Goal_card_visible",
+              "The end-of-level roulette card comes on screen. Its face cycles mushroom / "
+              "flower / star until it is touched, so it is untyped here; the type taken is "
+              "in Goal_card_collected.", ("mario3",),
+              former=("Goal_card_visible/{card_type}",)),
     EventType("Goal_card_collected/{card_type}",
               "The player touches and collects the end-of-level goal card.", ("mario3",)),
     EventType("Auto_scroll_started",

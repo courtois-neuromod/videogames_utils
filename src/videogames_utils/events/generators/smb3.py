@@ -59,8 +59,12 @@ HALT_AREA_LOAD = 128
 CARD_NAMES = {0: "Mushroom", 1: "Flower", 2: "Star", 3: "1Up",
               4: "10Coin", 5: "20Coin", 8: "Wild"}
 
-#: Object ids that are the end-of-level goal cards.
-GOAL_CARD_OBJECTS = {0x21: "Mushroom", 0x22: "Flower", 0x23: "Star"}
+#: The end-of-level roulette card (OBJ_ENDLEVELCARD). Its face cycles mushroom / flower /
+#: star until the player touches it, so the card is untyped while visible; the type
+#: collected is known from the inventory (Goal_card_collected). The card *items* 0x21-0x23
+#: (PowerUpMushCard etc.) are something else and never appear at a level end: keying on
+#: them, as an earlier release did, produced no Goal_card_visible event at all.
+GOAL_CARD_OBJECT = 0x41
 
 #: Object ids that are items rather than enemies.
 ITEM_OBJECT_IDS = {0x0B: "1Up", 0x0C: "Starman", 0x0D: "Mushroom",
@@ -80,7 +84,7 @@ _NON_ENEMY_NAME_PATTERN = re.compile(
     re.IGNORECASE)
 
 NON_ENEMY_OBJECT_IDS = (
-    set(GOAL_CARD_OBJECTS)
+    {GOAL_CARD_OBJECT, 0x21, 0x22, 0x23}
     | set(ITEM_OBJECT_IDS)
     | {oid for oid, name in SMB3_OBJECT_IDS.items()
        if _NON_ENEMY_NAME_PATTERN.search(name)}
@@ -256,8 +260,9 @@ def _object_events(acc: EventAccumulator, d: _Vars) -> None:
     # Goal cards and items occupy ordinary object slots.
     for track in tracking.find_tracks(
             d.n, N_SLOTS, d.visible, lambda s, f: d.ids[s][f], min_frames=2,
-            keep=lambda oid: oid in GOAL_CARD_OBJECTS):
-        acc.add(f"Goal_card_visible/{GOAL_CARD_OBJECTS[track.type_id]}", track.frame_start)
+            keep=lambda oid: oid == GOAL_CARD_OBJECT):
+        acc.add("Goal_card_visible", track.frame_start)
+        break   # the card is one object; a second visible track is a re-scroll
 
     for track in tracking.find_tracks(
             d.n, N_SLOTS, d.visible, lambda s, f: d.ids[s][f], min_frames=2,

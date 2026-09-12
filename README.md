@@ -4,6 +4,28 @@ Utilities for processing and analyzing CNeuroMod videogame data, including repla
 
 ![GUI Screenshot](src/videogames_utils/gui/resources/GUI_screenshot.png)
 
+## Event annotations (`videogames_utils.events`)
+
+The annotation pipeline shared by the four videogame datasets: a controlled `trial_type`
+vocabulary, RAM decode tables verified against the games' disassemblies, per-game event
+generators, a validator and a review-set builder. Each dataset's
+`code/annotations/generate_annotations.py` is a thin CLI over it.
+
+```bash
+python code/annotations/generate_annotations.py -d . --overwrite --validate   # in a dataset
+python -m videogames_utils.events.validate_cli check . mario                    # validation only
+python -m videogames_utils.events.docs . mario                                  # regenerate code/annotations/README.md
+python -m videogames_utils.events.render_frames . <bk2> 0,118,124 --check player_state   # look at frames
+```
+
+Documentation:
+
+- [`docs/EVENT_REFERENCE.md`](docs/EVENT_REFERENCE.md): every event of every game, with
+  the RAM address, value and validation figure behind it.
+- each dataset's `code/annotations/README.md`, generated from the vocabulary with the
+  row count of every event in that dataset.
+- each dataset's `task-<task>_events.json` BIDS sidecar.
+
 ## Installation
 
 ```bash
