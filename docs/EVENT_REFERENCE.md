@@ -11,12 +11,11 @@ each dataset's `task-<task>_events.json`.
 | `mario` | Super Mario Bros. | NES | 599,061 | 73 | 3,374 |
 | `mario3` | Super Mario Bros. 3 | NES | 335,516 | 221 | 4,063 |
 | `mariostars` | Super Mario All-Stars (SMB1) | SNES | 226,633 | 73 | 1,232 |
-| `shinobi` | Shinobi III | Genesis | 244,032 | 24 | 666 |
+| `shinobi` | Shinobi III | Genesis | 246,374 | 25 | 666 |
 
 `mario3` has many more distinct types only because SMB3 has ~170 named object types, and
 both `Enemy_on_screen/{type}` and `Enemy_defeated/{method}/{type}` expand one per species.
-Counts are from the files regenerated on 2026-09-12 (shinobi before its `hit_timer` replay
-pass, so without `Player_state/Hit_recovery`).
+Counts are from the files regenerated on 2026-09-12.
 
 Each dataset's `code/annotations/README.md` is generated from the same vocabulary
 (`python -m videogames_utils.events.docs <dataset> <task>`) and lists, for that game,
