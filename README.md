@@ -244,3 +244,5 @@ Contributions are welcome! Please feel free to submit issues or pull requests.
 ## Authors
 
 CNeuroMod
+
+The PDF is built with `docs/build_reference_pdf.sh` (pandoc + headless Chrome).
