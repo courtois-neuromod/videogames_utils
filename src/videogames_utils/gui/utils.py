@@ -49,8 +49,8 @@ GAME_CONFIGS = {
     'mariostars': {
         'top_stats': ['score', 'coins', 'lives', 'time_hundreds', 'current_world'],
         'state_vars': {
-            'Power': 'player_powerup',
-            'Star': 'star_power_timer',
+            'Power': 'player_status',
+            'Star': 'star_timer',
             'Action': 'player_action_state',
         },
         'position': ['player_x_high', 'player_y_low'],
