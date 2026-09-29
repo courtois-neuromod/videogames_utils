@@ -1,12 +1,14 @@
+import itertools
 import logging
 import os
 import subprocess
 import tempfile
+from fractions import Fraction
 from pathlib import Path
 from typing import Iterable
 
 import numpy as np
-from moviepy import ImageSequenceClip, AudioFileClip
+import imageio_ffmpeg
 from PIL import Image
 
 from .replay import write_wav
@@ -36,66 +38,55 @@ def make_mp4(
     *,
     audio: np.ndarray | None = None,
     sample_rate: int | None = None,
-    fps: int = 60,
+    fps: float,
 ) -> None:
-    """Create an MP4 file from a list of frames, with optional audio multiplexing using moviepy."""
+    """Create an MP4 file from a list of frames, with optional audio multiplexing.
 
-    # Convert frames to RGB format expected by moviepy
-    # Process directly from iterator to avoid creating an extra copy
-    processed_frames = []
-    for frame in selected_frames:
-        im = Image.new("RGB", (frame.shape[1], frame.shape[0]), color="white")
-        im.paste(Image.fromarray(frame), (0, 0))
-        processed_frames.append(np.array(im))
+    ``fps`` is required and should be the emulator's native frame rate (see
+    ``videogames_utils.events.emit.FRAME_RATES``). The emulator's audio already plays at
+    that rate, so writing the frames at a nominal 60 fps makes the video stream drift
+    away from its own audio track and from the events timeline.
 
-    # Create video clip from frames
-    clip = ImageSequenceClip(processed_frames, fps=fps)
-    
-    # Clear processed_frames now that clip has a reference
-    del processed_frames
-
-    final_path = Path(movie_fname)
-    audio_clip = None
-
-    if audio is None or sample_rate is None:
-        # Write video without audio
-        try:
-            clip.write_videofile(str(final_path), codec='libx264', audio=False, logger=None)
-        finally:
-            clip.close()
+    Frames are piped to ffmpeg directly rather than through moviepy, which rounds the
+    frame rate to two decimals and resamples frames by timestamp, silently dropping the
+    last one. Here every frame is written once, at the exact (rational) rate.
+    """
+    frames = iter(selected_frames)
+    first = next(frames, None)
+    if first is None:
+        logging.warning(f"No frames to save in {movie_fname}")
         return
+    height, width = first.shape[:2]
+    rate = Fraction(fps).limit_denominator(1_000_000)
 
-    # Handle audio
     temp_dir = tempfile.mkdtemp(prefix="videogames_utils_")
     temp_audio = Path(temp_dir) / "audio.wav"
-
+    cmd = [
+        imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-loglevel", "error",
+        "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{width}x{height}",
+        "-framerate", f"{rate.numerator}/{rate.denominator}", "-i", "pipe:0",
+    ]
     try:
-        if audio.dtype != np.int16:
-            logging.info("Casting audio to int16 before saving")
-            audio = audio.astype(np.int16)
+        if audio is not None and sample_rate is not None:
+            if audio.dtype != np.int16:
+                logging.info("Casting audio to int16 before saving")
+                audio = audio.astype(np.int16)
+            write_wav(audio, sample_rate, str(temp_audio))
+            cmd += ["-i", str(temp_audio), "-c:a", "aac", "-ar", "44100"]
+        cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", str(movie_fname)]
 
-        write_wav(audio, sample_rate, str(temp_audio))
-
-        # Add audio to video clip
-        audio_clip = AudioFileClip(str(temp_audio))
-        clip = clip.with_audio(audio_clip)
-
-        # Write final video with audio
-        # Explicitly set temp_audiofile to be in the temp dir so it gets cleaned up
-        temp_audiofile = Path(temp_dir) / "temp-audio.m4a"
-        clip.write_videofile(
-            str(final_path), 
-            codec='libx264', 
-            audio_codec='aac', 
-            logger=None,
-            temp_audiofile=str(temp_audiofile)
-        )
-
+        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            for frame in itertools.chain([first], frames):
+                proc.stdin.write(np.ascontiguousarray(frame[..., :3], dtype=np.uint8).tobytes())
+        except BrokenPipeError:
+            pass  # ffmpeg exited early; its stderr is reported below
+        finally:
+            proc.stdin.close()
+        stderr = proc.stderr.read()
+        if proc.wait() != 0:
+            raise RuntimeError(f"ffmpeg failed writing {movie_fname}: {stderr.decode(errors='replace')}")
     finally:
-        # Close clips in reverse order of creation
-        if audio_clip is not None:
-            audio_clip.close()
-        clip.close()
         try:
             temp_audio.unlink(missing_ok=True)
             os.rmdir(temp_dir)
