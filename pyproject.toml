@@ -14,7 +14,7 @@ dependencies = [
     "stable-retro",
     "numpy",
     "Pillow",
-    "moviepy",
+    "imageio-ffmpeg",
     "opencv-python",
     "PyQt6",
     "pyqtgraph",
