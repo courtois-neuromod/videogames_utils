@@ -39,15 +39,15 @@ CONTAINER = "gym-retro_game"
 #: Tolerance when comparing an onset recomputed from frame_start, in seconds.
 ONSET_TOLERANCE = 0.002
 
-#: The mutually exclusive Player_state forms. Together they tile the frames on which the
+#: The mutually exclusive PlayerState forms. Together they tile the frames on which the
 #: player is alive in the level.
-FORM_STATES = frozenset({"Player_state/Small", "Player_state/Super", "Player_state/Fire",
-                         "Player_state/Raccoon", "Player_state/Frog",
-                         "Player_state/Tanooki", "Player_state/Hammer",
-                         "Player_state/Normal"})
+FORM_STATES = frozenset({"PlayerState/Small", "PlayerState/Super", "PlayerState/Fire",
+                         "PlayerState/Raccoon", "PlayerState/Frog",
+                         "PlayerState/Tanooki", "PlayerState/Hammer",
+                         "PlayerState/Normal"})
 
 #: Screen/* rows during which no form row may exist.
-NOT_ALIVE_SCREENS = frozenset({"Screen/Death", "Screen/Level_intro", "Screen/Game_over",
+NOT_ALIVE_SCREENS = frozenset({"Screen/Death", "Screen/LevelIntro", "Screen/GameOver",
                                "Screen/Map"})
 
 #: Shortest title card observed (86 frames on the NES, 79 on the SNES); the black screen
@@ -60,16 +60,16 @@ INTRO_MIN_FRAMES = 60
 FORM_VARS = {"mario": "player_status", "mariostars": "player_status", "mario3": "powerup"}
 
 #: (timer variable, trial_type) pairs whose non-zero runs are the overlay states.
-_SMB1_TIMERS = (("star_timer", "Player_state/Star"),
-                ("injury_timer", "Player_state/Hit_recovery"))
+_SMB1_TIMERS = (("star_timer", "PlayerState/Star"),
+                ("injury_timer", "PlayerState/HitRecovery"))
 STATE_TIMERS = {
     "mario": _SMB1_TIMERS,
     "mariostars": _SMB1_TIMERS,
-    "mario3": (("invincibility_timer", "Player_state/Star"),
-               ("invisibility_timer", "Player_state/Hit_recovery"),
-               ("flight_timer", "Player_state/Flying"),
-               ("statue_timer", "Player_state/Statue"),
-               ("kuribo_shoe", "Player_state/Kuribo_shoe")),
+    "mario3": (("invincibility_timer", "PlayerState/Star"),
+               ("invisibility_timer", "PlayerState/HitRecovery"),
+               ("flight_timer", "PlayerState/Flying"),
+               ("statue_timer", "PlayerState/Statue"),
+               ("kuribo_shoe", "PlayerState/KuriboShoe")),
 }
 
 
@@ -238,7 +238,7 @@ def check_invariants(events: pd.DataFrame, repvars: dict, task: str, summary: di
                 "mario3": "coins_p1"}.get(task)
     if coin_var and coin_var in repvars:
         expected = _coin_collections(repvars[coin_var])
-        got = counts.get("Item_collected/Coin", 0)
+        got = counts.get("ItemCollected/Coin", 0)
         if expected != got:
             report.add("V1", "coin count disagrees with the coin counter", path,
                        f"counter says {expected}, events say {got}")
@@ -246,13 +246,13 @@ def check_invariants(events: pd.DataFrame, repvars: dict, task: str, summary: di
     # --- lives -------------------------------------------------------------------
     if "lives" in repvars:
         gained = _diff_increases(repvars["lives"])
-        got = counts.get("Life_gained", 0)
+        got = counts.get("LifeGained", 0)
         if gained != got:
-            report.add("V1", "Life_gained disagrees with the lives counter", path,
+            report.add("V1", "LifeGained disagrees with the lives counter", path,
                        f"counter says {gained}, events say {got}", "warning")
 
     # --- deaths ------------------------------------------------------------------
-    deaths = prefix_count("Player_died")
+    deaths = prefix_count("PlayerDied")
     if task == "shinobi" and "lives" in repvars:
         expected = _diff_decreases(repvars["lives"])
         if expected != deaths:
@@ -263,25 +263,25 @@ def check_invariants(events: pd.DataFrame, repvars: dict, task: str, summary: di
         outcome = (summary or {}).get("Outcome", "")
         if outcome.startswith("failed") and deaths != 1:
             report.add("V1", "failed repetition without exactly one death", path,
-                       f"outcome={outcome}, {deaths} Player_died events")
+                       f"outcome={outcome}, {deaths} PlayerDied events")
         if outcome == "cleared" and deaths:
             report.add("V1", "cleared repetition with a death", path,
-                       f"{deaths} Player_died events")
+                       f"{deaths} PlayerDied events")
 
     # --- level completion --------------------------------------------------------
-    completed = counts.get("Level_completed", 0)
+    completed = counts.get("LevelCompleted", 0)
     if completed > 1:
-        report.add("V1", "more than one Level_completed", path, f"{completed} events")
+        report.add("V1", "more than one LevelCompleted", path, f"{completed} events")
     outcome = (summary or {}).get("Outcome")
-    warped = counts.get("Level_exited/Warp", 0)
+    warped = counts.get("LevelExited/Warp", 0)
     if outcome and task == "shinobi":
         # Completion is read from the end-of-level fade, which the recording sometimes
         # stops short of (17 of 536 cleared repetitions), so a miss is only a warning.
         if outcome == "cleared" and not completed:
-            report.add("V1", "cleared repetition without Level_completed", path,
+            report.add("V1", "cleared repetition without LevelCompleted", path,
                        "recording stopped before the end-of-level fade", "warning")
         if outcome == "failed" and completed:
-            report.add("V1", "failed repetition with Level_completed", path,
+            report.add("V1", "failed repetition with LevelCompleted", path,
                        f"outcome={outcome}, {completed} events")
     elif outcome:
         if outcome == "cleared" and completed != 1:
@@ -291,14 +291,14 @@ def check_invariants(events: pd.DataFrame, repvars: dict, task: str, summary: di
                 # mislabelled "cleared". The events are right; the summary is not.
                 report.add("V1", "summary says cleared but the repetition warped out",
                            path,
-                           f"outcome={outcome}, Level_exited/Warp present, "
+                           f"outcome={outcome}, LevelExited/Warp present, "
                            "no flagpole -- the shipped Outcome is unreliable here",
                            "warning")
             else:
-                report.add("V1", "cleared repetition without Level_completed", path,
+                report.add("V1", "cleared repetition without LevelCompleted", path,
                            f"outcome={outcome}, {completed} events")
         if outcome.startswith("failed") and completed:
-            report.add("V1", "failed repetition with Level_completed", path,
+            report.add("V1", "failed repetition with LevelCompleted", path,
                        f"outcome={outcome}, {completed} events")
 
     # --- enemies -----------------------------------------------------------------
@@ -307,13 +307,13 @@ def check_invariants(events: pd.DataFrame, repvars: dict, task: str, summary: di
     # matched to a track of the same species whose window contains it, mirroring the
     # generator's own rule. Defeats matching no track are enemies killed while off
     # screen (a kicked shell rolling on out of view); those are real, since the score
-    # rises, but they have no Enemy_on_screen partner. Each track claims at most one.
-    appeared = prefix_count("Enemy_on_screen")
-    defeated = prefix_count("Enemy_defeated")
+    # rises, but they have no EnemyOnScreen partner. Each track claims at most one.
+    appeared = prefix_count("EnemyOnScreen")
+    defeated = prefix_count("EnemyDefeated")
     if appeared:
         tt = events["trial_type"].astype(str)
-        tracks = events[tt.str.startswith("Enemy_on_screen/")]
-        kills = events[tt.str.startswith("Enemy_defeated/")]
+        tracks = events[tt.str.startswith("EnemyOnScreen/")]
+        kills = events[tt.str.startswith("EnemyDefeated/")]
         by_species = collections.defaultdict(list)
         for _, t in tracks.iterrows():
             by_species[str(t["trial_type"]).split("/", 1)[1]].append(
@@ -351,7 +351,7 @@ def check_invariants(events: pd.DataFrame, repvars: dict, task: str, summary: di
     # --- player states -----------------------------------------------------------
     # Recounted straight from the RAM series: one form row per maximal run of a constant
     # form value over the frames on which the player is alive (outside the Death /
-    # Level_intro / Game_over / Map screens), one overlay row per non-zero run of its
+    # LevelIntro / GameOver / Map screens), one overlay row per non-zero run of its
     # timer. The form rows must also tile the alive frames exactly.
     form_var = FORM_VARS.get(task)
     forms = events[tt.isin(FORM_STATES)]
@@ -363,21 +363,21 @@ def check_invariants(events: pd.DataFrame, repvars: dict, task: str, summary: di
         expected = sum(1 for i, v in enumerate(series)
                        if alive[i] and (i == 0 or not alive[i - 1] or series[i - 1] != v))
         if expected != len(forms):
-            report.add("V1", "Player_state form rows disagree with the form variable",
+            report.add("V1", "PlayerState form rows disagree with the form variable",
                        path, f"{form_var} has {expected} runs over alive frames, "
                              f"events have {len(forms)}")
         covered = int((forms["frame_stop"].astype(int)
                        - forms["frame_start"].astype(int) + 1).sum())
         n_alive = sum(alive)
         if covered != n_alive:
-            report.add("V1", "Player_state form rows do not tile the alive frames", path,
+            report.add("V1", "PlayerState form rows do not tile the alive frames", path,
                        f"form rows cover {covered} frames, {n_alive} are alive")
         ordered = forms.sort_values("frame_start")
         stops = ordered["frame_stop"].astype(int).tolist()
         starts = ordered["frame_start"].astype(int).tolist()
         overlapping = sum(1 for i in range(1, len(starts)) if starts[i] <= stops[i - 1])
         if overlapping:
-            report.add("V1", "overlapping Player_state form rows", path,
+            report.add("V1", "overlapping PlayerState form rows", path,
                        f"{overlapping} row(s) start before the previous form ends")
     for var, trial_type in STATE_TIMERS.get(task, ()):
         if var not in repvars:
@@ -388,15 +388,15 @@ def check_invariants(events: pd.DataFrame, repvars: dict, task: str, summary: di
             report.add("V1", f"{trial_type} rows disagree with {var}", path,
                        f"{var} has {expected} non-zero runs, events have {got}")
     if task == "shinobi":
-        recovery = events[tt == "Player_state/Hit_recovery"]
-        hits = events[tt == "Player_damaged"]["frame_start"].astype(int).tolist()
+        recovery = events[tt == "PlayerState/HitRecovery"]
+        hits = events[tt == "PlayerDamaged"]["frame_start"].astype(int).tolist()
         if len(recovery) > len(hits):
-            report.add("V1", "more Hit_recovery rows than Player_damaged", path,
+            report.add("V1", "more HitRecovery rows than PlayerDamaged", path,
                        f"{len(recovery)} recoveries, {len(hits)} hits")
         stray = sum(1 for f in recovery["frame_start"].astype(int)
                     if not any(abs(f - h) <= 3 for h in hits))
         if stray:
-            report.add("V1", "Hit_recovery not anchored on a Player_damaged", path,
+            report.add("V1", "HitRecovery not anchored on a PlayerDamaged", path,
                        f"{stray} row(s) start more than 3 frames from any hit")
 
     # --- frame/onset consistency -------------------------------------------------
@@ -434,40 +434,40 @@ def _check_screens(events: pd.DataFrame, repvars: dict, task: str, n_frames: int
             for frame in range(start, stop + 1):
                 alive[frame] = False
 
-    # Deaths: one Death screen per Player_died, starting on its frame.
-    died = events[tt.str.startswith("Player_died")]["frame_start"].astype(int).tolist()
+    # Deaths: one Death screen per PlayerDied, starting on its frame.
+    died = events[tt.str.startswith("PlayerDied")]["frame_start"].astype(int).tolist()
     death_starts = rows[rows["trial_type"] == "Screen/Death"]["frame_start"].astype(int)
     if len(died) != len(death_starts):
-        report.add("V1", "Screen/Death rows disagree with Player_died", path,
+        report.add("V1", "Screen/Death rows disagree with PlayerDied", path,
                    f"{len(died)} deaths, {len(death_starts)} Death screens")
     elif sorted(died) != sorted(death_starts.tolist()):
-        report.add("V1", "Screen/Death does not start on the Player_died frame", path,
+        report.add("V1", "Screen/Death does not start on the PlayerDied frame", path,
                    f"deaths at {sorted(died)[:4]}, screens at "
                    f"{sorted(death_starts.tolist())[:4]}")
 
     # Level end: at most one, present exactly when the level was completed, containing
-    # the Level_completed frame.
-    ends = rows[rows["trial_type"] == "Screen/Level_end"]
-    completed = events[tt == "Level_completed"]["frame_start"].astype(int).tolist()
+    # the LevelCompleted frame.
+    ends = rows[rows["trial_type"] == "Screen/LevelEnd"]
+    completed = events[tt == "LevelCompleted"]["frame_start"].astype(int).tolist()
     if len(ends) > 1:
-        report.add("V1", "more than one Screen/Level_end", path, f"{len(ends)} rows")
+        report.add("V1", "more than one Screen/LevelEnd", path, f"{len(ends)} rows")
     if bool(len(ends)) != bool(completed):
-        report.add("V1", "Screen/Level_end and Level_completed disagree", path,
-                   f"{len(ends)} Level_end screens, {len(completed)} Level_completed")
+        report.add("V1", "Screen/LevelEnd and LevelCompleted disagree", path,
+                   f"{len(ends)} LevelEnd screens, {len(completed)} LevelCompleted")
     elif ends is not None and len(ends) and completed:
         a, b = int(ends.iloc[0]["frame_start"]), int(ends.iloc[0]["frame_stop"])
         if not a <= completed[0] <= b:
-            report.add("V1", "Level_completed outside its Screen/Level_end", path,
+            report.add("V1", "LevelCompleted outside its Screen/LevelEnd", path,
                        f"completed at {completed[0]}, screen {a}-{b}")
 
     # Pipes: entering a pipe starts a transition.
-    pipes = events[tt == "Pipe_entered"]["frame_start"].astype(int).tolist()
+    pipes = events[tt == "PipeEntered"]["frame_start"].astype(int).tolist()
     transitions = rows[rows["trial_type"] == "Screen/Transition"]
     spans = list(zip(transitions["frame_start"].astype(int),
                      transitions["frame_stop"].astype(int)))
     stray = sum(1 for f in pipes if not any(a <= f <= b for a, b in spans))
     if stray:
-        report.add("V1", "Pipe_entered outside any Screen/Transition", path,
+        report.add("V1", "PipeEntered outside any Screen/Transition", path,
                    f"{stray} of {len(pipes)} pipe entries", "warning")
 
     # SMB1 title cards, recounted by length rather than by context: the engine-0 (NES)
@@ -485,12 +485,12 @@ def _check_screens(events: pd.DataFrame, repvars: dict, task: str, n_frames: int
             else:
                 long_runs += run >= INTRO_MIN_FRAMES
                 run = 0
-        intros = counts.get("Screen/Level_intro", 0)
+        intros = counts.get("Screen/LevelIntro", 0)
         if intros != long_runs:
-            report.add("V1", "Screen/Level_intro count disagrees with the title-card "
+            report.add("V1", "Screen/LevelIntro count disagrees with the title-card "
                              "stretches", path,
                        f"{long_runs} stretch(es) >= {INTRO_MIN_FRAMES} frames, "
-                       f"{intros} Level_intro rows", "warning")
+                       f"{intros} LevelIntro rows", "warning")
     return alive
 
 
@@ -522,8 +522,8 @@ def check_cross_port(mario_stats: Dict[str, collections.Counter],
 
 
 def enemy_roster(events: pd.DataFrame) -> collections.Counter:
-    """Enemy types named by the Enemy_on_screen events of one events file."""
-    rows = events[events["trial_type"].astype(str).str.startswith("Enemy_on_screen/")]
+    """Enemy types named by the EnemyOnScreen events of one events file."""
+    rows = events[events["trial_type"].astype(str).str.startswith("EnemyOnScreen/")]
     return collections.Counter(rows["trial_type"].str.split("/").str[1])
 
 

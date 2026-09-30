@@ -8,11 +8,11 @@ gameplay meaning.
 
 What that costs, explicitly:
 
-* ``Enemy_defeated`` is inferred from score increments and is **untyped**. Only the
+* ``EnemyDefeated`` is inferred from score increments and is **untyped**. Only the
   documented enemy values are counted; see :data:`KILL_SCORE_VALUES`.
 * There are no ``Enemy_appeared`` / ``Enemy_disappeared`` / ``Enemy_counter`` events,
   because nothing in the current RAM map locates enemy objects.
-* ``Level_completed`` is read from the end-of-level fade that closes the recording, so
+* ``LevelCompleted`` is read from the end-of-level fade that closes the recording, so
   it is missed in the few cleared repetitions whose recording stopped before the fade.
   See :func:`_screen_labels`.
 
@@ -103,11 +103,11 @@ def generate(repvars: dict, level=None, outcome: Optional[str] = None, **default
     screens.emit(acc, labels)
     for start, stop, label in constant_runs(labels):
         if label == screens.LEVEL_END:
-            acc.add("Level_completed", start)
+            acc.add("LevelCompleted", start)
             break
     # Shinobi's single form: one row per stretch of frames on which the player is alive.
     for start, stop, _ in constant_runs([0] * n, keep=screens.alive_mask(labels)):
-        acc.add("Player_state/Normal", start, stop)
+        acc.add("PlayerState/Normal", start, stop)
     _combat_events(acc, col, n)
     return acc.to_frame()
 
@@ -167,7 +167,7 @@ def _screen_labels(col, n: int, death_frames: List[int]) -> List[str]:
 
 
 def _player_events(acc: EventAccumulator, col, n: int) -> List[int]:
-    """Player_damaged, Health_gained, Player_died, Life_gained, Player_state/Hit_recovery.
+    """PlayerDamaged, HealthGained, PlayerDied, LifeGained, PlayerState/HitRecovery.
 
     Returns:
         The frames on which a life was lost.
@@ -184,23 +184,23 @@ def _player_events(acc: EventAccumulator, col, n: int) -> List[int]:
             # A death drains the health bar; that drain is the death, not a separate hit.
             if any(-60 <= frame - df <= 180 for df in death_frames):
                 continue
-            acc.add("Player_damaged", frame)
+            acc.add("PlayerDamaged", frame)
             damaged.append(frame)
         elif delta > 0:
-            acc.add("Health_gained", frame)
+            acc.add("HealthGained", frame)
 
     # Post-hit recovery. `hit_timer` (added in this release, see ram.SHINOBI_CANDIDATES)
     # is set to 80 or 64 on the frame health drops and counts down once per frame while
     # the player flashes. The same byte also runs from 48 after knock-backs that cost no
     # health and idles at 1 for ~25 frames at other moments, so only stretches that begin
-    # on a Player_damaged are used. A stretch is cut where health reaches 0, since the
+    # on a PlayerDamaged are used. A stretch is cut where health reaches 0, since the
     # counter keeps running through the death animation.
     hit_timer = col("hit_timer")
     for start, stop, _ in nonzero_runs(hit_timer, split_on_value_change=False):
         if not any(abs(start - f) <= 3 for f in damaged):
             continue
         zero = [f for f in range(start, stop + 1) if health[f] == 0]
-        acc.add("Player_state/Hit_recovery", start, clip(start, stop, zero[:1]))
+        acc.add("PlayerState/HitRecovery", start, clip(start, stop, zero[:1]))
 
     # The shipped pipeline has no player-death event at all -- this is a real gap, since
     # `lives` records it unambiguously. `lives` only drops once the death animation has
@@ -208,44 +208,44 @@ def _player_events(acc: EventAccumulator, col, n: int) -> List[int]:
     # reached zero and `duration` runs to the life loss (the same treatment as the SMB1
     # fall death).
     for frame in death_frames:
-        acc.add("Player_died", _death_onset(health, frame), frame)
+        acc.add("PlayerDied", _death_onset(health, frame), frame)
 
     for frame in range(1, n):
         if lives[frame] > lives[frame - 1]:
-            acc.add("Life_gained", frame)
+            acc.add("LifeGained", frame)
     return death_frames
 
 
 def _combat_events(acc: EventAccumulator, col, n: int) -> None:
-    """Enemy_defeated, Projectile_appeared/Shuriken, Item_collected/Shurikens."""
+    """EnemyDefeated, ProjectileAppeared/Shuriken, ItemCollected/Shurikens."""
     score = col("instantScore")
     for frame in range(1, n):
         if score[frame] - score[frame - 1] in KILL_SCORE_VALUES:
-            acc.add("Enemy_defeated", frame)
+            acc.add("EnemyDefeated", frame)
 
     shurikens = col("shurikens")
     for frame in range(1, n):
         delta = shurikens[frame] - shurikens[frame - 1]
         if delta == -1:
-            acc.add("Projectile_appeared/Shuriken", frame)
+            acc.add("ProjectileAppeared/Shuriken", frame)
         elif delta > 0:
             # The amount picked up is not carried on the row; it is recoverable from
             # `shurikens` in the repetition's _variables.json.
-            acc.add("Item_collected/Shurikens", frame)
+            acc.add("ItemCollected/Shurikens", frame)
 
     # Ninjutsu consumes several shurikens at once and decrements the magic counter.
     ninjutsu = col("ninjitsu")
     kind = col("typeOfNinjitsu")
     for frame in range(1, n):
         if ninjutsu[frame] < ninjutsu[frame - 1]:
-            acc.add(f"Weapon_powerup_started/Ninjutsu{kind[frame] or ''}", frame)
+            acc.add(f"WeaponPowerupStarted/Ninjutsu{kind[frame] or ''}", frame)
 
 
 def _level_events(acc: EventAccumulator, n: int) -> None:
-    """Level_started. ``Level_completed`` is emitted from the screen labels in
+    """LevelStarted. ``LevelCompleted`` is emitted from the screen labels in
     :func:`generate`, at the start of the end-of-level fade.
 
-    The shipped generator fabricated ``Level_completed`` five seconds before the end of
+    The shipped generator fabricated ``LevelCompleted`` five seconds before the end of
     any repetition in which no life was lost -- a property of the whole repetition dressed
     up as a timed event -- and an earlier release of this module dropped it, having found
     that ``blackScreen`` is set in every repetition. It is: the value 40 is the scroll lock
@@ -254,4 +254,4 @@ def _level_events(acc: EventAccumulator, n: int) -> None:
     repetitions and in none of the 130 failed ones (which end in the death value 21 or in
     play). The 17 misses are cleared repetitions whose recording stopped before the fade.
     """
-    acc.add("Level_started", 0)
+    acc.add("LevelStarted", 0)

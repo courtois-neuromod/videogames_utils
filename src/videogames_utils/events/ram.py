@@ -107,7 +107,7 @@ SMB1_CANDIDATES: List[Candidate] = [
     # NOTE: HalfwayPage is written when the player DIES past the level midpoint, to place
     # the respawn, not when the midpoint is crossed. Verified: in a w1-1 replay it is
     # non-zero only during the two death/respawn sequences. It therefore cannot mark
-    # Checkpoint_reached; kept because it records whether a respawn used the checkpoint.
+    # CheckpointReached; kept because it records whether a respawn used the checkpoint.
     Candidate("halfway_page", 0x075B, "|u1", "HalfwayPage",
               "respawn page, written at death past the midpoint (NOT a crossing marker)"),
     Candidate("event_music_queue", 0xFC, "|u1", "EventMusicQueue",
@@ -176,7 +176,7 @@ SMB3_CANDIDATES: List[Candidate] = [
     *_array("object_state", 0x0661, 8, "|u1", "Objects_State", "OBJSTATE_* per slot"),
     # Objects_DetStat is COLLISION bits, not visibility: $01 hit wall right, $02 hit wall
     # left, $04 hit ground, $08 hit ceiling, $80 on a 32px partition floor. The trailing
-    # "on screen" in its .ds comment is vestigial. Kept for Enemy_attack heuristics only.
+    # "on screen" in its .ds comment is vestigial. Kept for EnemyAttack heuristics only.
     *_array("object_detstat", 0x00D9, 8, "|u1", "Objects_DetStat",
             "collision bits: 1 wall-R, 2 wall-L, 4 ground, 8 ceiling, 0x80 partition"),
     # These are the actual visibility flags.
@@ -195,7 +195,7 @@ SMB3_CANDIDATES: List[Candidate] = [
     *_array("object_player_hitstat", 0x0796, 8, "|u1", "Objects_PlayerHitStat",
             "which object hit the player"),
     Candidate("level_hautoscroll", 0x0580, "|u1", "Level_HAutoScroll",
-              "-> Auto_scroll_started"),
+              "-> AutoScrollStarted"),
     Candidate("player_halt_game", 0x00CE, "|u1", "Player_HaltGame",
               "dying / growing / shrinking"),
     Candidate("player_suit_lost", 0x0554, "|u1", "Player_SuitLost",
@@ -240,30 +240,30 @@ CANDIDATES: Dict[str, List[Candidate]] = {
 #: Enemy/object ids for SMB1 ($00-$36), from SMBDIS.ASM: the named constants plus the
 #: ``InitEnemyRoutines`` jump table, which covers the whole range including the entries
 #: that have no symbolic constant. Ids with neither a constant nor a distinguishing init
-#: routine are left as ``Unknown_0xNN`` rather than guessed; the validator flags any that
+#: routine are left as ``Unknown0xNN`` rather than guessed; the validator flags any that
 #: actually turn up in the data.
 #:
 #: Super Mario All-Stars reuses these ids verbatim in ``sprite_number_*`` (verified
 #: empirically against mariostars replays: 13=PiranhaPlant, 6=Goomba, 2=BuzzyBeetle,
 #: 0=GreenKoopa, 14=GreenParatroopa, 48=FlagpoleFlag, 49=StarFlag).
 SMB1_ENEMY_IDS: Dict[int, str] = {
-    0x00: "GreenKoopa", 0x01: "Unknown_0x01", 0x02: "BuzzyBeetle", 0x03: "RedKoopa",
-    0x04: "Unknown_0x04", 0x05: "HammerBro", 0x06: "Goomba", 0x07: "Blooper",
-    0x08: "BulletBill", 0x09: "Unknown_0x09", 0x0A: "GreyCheepCheep",
+    0x00: "GreenKoopa", 0x01: "Unknown0x01", 0x02: "BuzzyBeetle", 0x03: "RedKoopa",
+    0x04: "Unknown0x04", 0x05: "HammerBro", 0x06: "Goomba", 0x07: "Blooper",
+    0x08: "BulletBill", 0x09: "Unknown0x09", 0x0A: "GreyCheepCheep",
     0x0B: "RedCheepCheep", 0x0C: "Podoboo", 0x0D: "PiranhaPlant",
     0x0E: "GreenParatroopaJump", 0x0F: "RedParatroopa", 0x10: "GreenParatroopaFly",
-    0x11: "Lakitu", 0x12: "Spiny", 0x13: "Unknown_0x13", 0x14: "FlyingCheepCheep",
+    0x11: "Lakitu", 0x12: "Spiny", 0x13: "Unknown0x13", 0x14: "FlyingCheepCheep",
     0x15: "BowserFlame", 0x16: "Fireworks", 0x17: "BulletBillCheepCheepFrenzy",
-    0x18: "StopFrenzy", 0x19: "Unknown_0x19", 0x1A: "Unknown_0x1A",
+    0x18: "StopFrenzy", 0x19: "Unknown0x19", 0x1A: "Unknown0x1A",
     0x1B: "ShortFirebar", 0x1C: "ShortFirebar", 0x1D: "ShortFirebar",
     0x1E: "ShortFirebar", 0x1F: "LongFirebar",
-    0x20: "Unknown_0x20", 0x21: "Unknown_0x21", 0x22: "Unknown_0x22",
-    0x23: "Unknown_0x23", 0x24: "BalancePlatform", 0x25: "VerticalPlatform",
+    0x20: "Unknown0x20", 0x21: "Unknown0x21", 0x22: "Unknown0x22",
+    0x23: "Unknown0x23", 0x24: "BalancePlatform", 0x25: "VerticalPlatform",
     0x26: "LargeLiftUp", 0x27: "LargeLiftDown", 0x28: "HorizontalPlatform",
     0x29: "DropPlatform", 0x2A: "HorizontalPlatform", 0x2B: "PlatformLiftUp",
     0x2C: "PlatformLiftDown", 0x2D: "Bowser", 0x2E: "PowerUpObject",
     0x2F: "VineObject", 0x30: "FlagpoleFlagObject", 0x31: "StarFlagObject",
-    0x32: "JumpspringObject", 0x33: "BulletBillCannon", 0x34: "Unknown_0x34",
+    0x32: "JumpspringObject", 0x33: "BulletBillCannon", 0x34: "Unknown0x34",
     0x35: "RetainerObject", 0x36: "EndOfEnemyObjects",
 }
 

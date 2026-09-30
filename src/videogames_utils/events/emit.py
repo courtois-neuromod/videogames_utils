@@ -62,7 +62,7 @@ class EventAccumulator:
 
     Example:
         acc = EventAccumulator(level="w1l1", fs=60.0998)
-        acc.add("Item_collected/Coin", frame)
+        acc.add("ItemCollected/Coin", frame)
         acc.add("Enemy_appeared/Goomba", start, stop)
         df = acc.to_frame()
     """
@@ -114,7 +114,7 @@ def finalize(frames: Iterable[pd.DataFrame]) -> pd.DataFrame:
         return pd.DataFrame()
 
     # Sort by onset, but keep the gym-retro_game container first among rows that share
-    # one. Level_started sits at frame 0 of a repetition and therefore ties with its own
+    # one. LevelStarted sits at frame 0 of a repetition and therefore ties with its own
     # container; if it sorted ahead, consumers that slice between container rows (the
     # videogames_utils GUI does exactly this) would file it under the previous repetition.
     events = pd.concat(frames)

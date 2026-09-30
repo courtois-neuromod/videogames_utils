@@ -11,7 +11,7 @@ captainsouthbird's disassembly, most importantly:
 
 Structural note: in this dataset a single level *attempt* can span up to three one-life
 ``.bk2`` files grouped by ``IndexLevel``. The caller passes ``index_level`` so only the
-first gets ``Level_started`` and the rest get ``Level_restarted``.
+first gets ``LevelStarted`` and the rest get ``LevelRestarted``.
 """
 
 from __future__ import annotations
@@ -61,9 +61,9 @@ CARD_NAMES = {0: "Mushroom", 1: "Flower", 2: "Star", 3: "1Up",
 
 #: The end-of-level roulette card (OBJ_ENDLEVELCARD). Its face cycles mushroom / flower /
 #: star until the player touches it, so the card is untyped while visible; the type
-#: collected is known from the inventory (Goal_card_collected). The card *items* 0x21-0x23
+#: collected is known from the inventory (GoalCardCollected). The card *items* 0x21-0x23
 #: (PowerUpMushCard etc.) are something else and never appear at a level end: keying on
-#: them, as an earlier release did, produced no Goal_card_visible event at all.
+#: them, as an earlier release did, produced no GoalCardVisible event at all.
 GOAL_CARD_OBJECT = 0x41
 
 #: Object ids that are items rather than enemies.
@@ -72,7 +72,7 @@ ITEM_OBJECT_IDS = {0x0B: "1Up", 0x0C: "Starman", 0x0D: "Mushroom",
 
 #: Object ids that are scenery, platforms, items or engine control objects, never
 #: enemies. SMB3 keeps all of these in the same object table as enemies, so they must be
-#: filtered out or they become spurious Enemy_on_screen events (verified: a "Twirlingplat"
+#: filtered out or they become spurious EnemyOnScreen events (verified: a "Twirlingplat"
 #: and a "Fallingplatform" both showed up as enemies before this filter existed).
 #: Derived from the disassembly's own OBJ_* names rather than hand-listed, so the filter
 #: stays correct if the table is regenerated.
@@ -99,7 +99,7 @@ BUTTON_ACTIONS = {
 
 
 def _name(object_id: int) -> str:
-    return SMB3_OBJECT_IDS.get(object_id, f"Unknown_0x{object_id:02X}")
+    return SMB3_OBJECT_IDS.get(object_id, f"Unknown0x{object_id:02X}")
 
 
 def _transitions(series, predicate) -> List[int]:
@@ -208,7 +208,7 @@ def _actions(acc: EventAccumulator, repvars: dict) -> None:
 
 
 def _object_events(acc: EventAccumulator, d: _Vars) -> None:
-    """Enemy_*, Projectile_on_screen, Goal_card_visible, Item_on_screen."""
+    """Enemy_*, ProjectileOnScreen, GoalCardVisible, ItemOnScreen."""
     tracks = tracking.find_tracks(
         d.n, N_SLOTS, d.visible, lambda s, f: d.ids[s][f],
         keep=lambda oid: oid not in NON_ENEMY_OBJECT_IDS)
@@ -229,10 +229,10 @@ def _object_events(acc: EventAccumulator, d: _Vars) -> None:
 
     for track in tracks:
         name = _name(track.type_id)
-        acc.add(f"Enemy_on_screen/{name}", track.frame_start, track.frame_stop)
+        acc.add(f"EnemyOnScreen/{name}", track.frame_start, track.frame_stop)
         if track.ended_defeated:
             frame, method = track.defeat
-            acc.add(f"Enemy_defeated/{method}/{name}", frame)
+            acc.add(f"EnemyDefeated/{method}/{name}", frame)
 
     # Defeats belonging to no track are enemies killed while off screen; still real.
     for index, (slot, frame, method) in enumerate(defeats):
@@ -241,33 +241,33 @@ def _object_events(acc: EventAccumulator, d: _Vars) -> None:
         oid = d.ids[slot][frame]
         if oid in NON_ENEMY_OBJECT_IDS:
             continue
-        acc.add(f"Enemy_defeated/{method}/{_name(oid)}", frame)
+        acc.add(f"EnemyDefeated/{method}/{_name(oid)}", frame)
 
     # A shell being kicked.
     for slot in range(N_SLOTS):
         state = d.states[slot]
         for frame in range(1, d.n):
             if state[frame] == STATE_KICKED and state[frame - 1] != STATE_KICKED:
-                acc.add("Shell_started_moving", frame)
+                acc.add("ShellStartedMoving", frame)
 
     # Projectiles live in their own SpecialObj table.
     for track in tracking.find_tracks(
             d.n, N_SLOTS, lambda s, f: bool(d.sobj[s][f]),
             lambda s, f: d.sobj[s][f], min_frames=2):
-        name = SMB3_SPECIAL_OBJECT_IDS.get(track.type_id, f"Unknown_0x{track.type_id:02X}")
-        acc.add(f"Projectile_on_screen/{name}", track.frame_start, track.frame_stop)
+        name = SMB3_SPECIAL_OBJECT_IDS.get(track.type_id, f"Unknown0x{track.type_id:02X}")
+        acc.add(f"ProjectileOnScreen/{name}", track.frame_start, track.frame_stop)
 
     # Goal cards and items occupy ordinary object slots.
     for track in tracking.find_tracks(
             d.n, N_SLOTS, d.visible, lambda s, f: d.ids[s][f], min_frames=2,
             keep=lambda oid: oid == GOAL_CARD_OBJECT):
-        acc.add("Goal_card_visible", track.frame_start)
+        acc.add("GoalCardVisible", track.frame_start)
         break   # the card is one object; a second visible track is a re-scroll
 
     for track in tracking.find_tracks(
             d.n, N_SLOTS, d.visible, lambda s, f: d.ids[s][f], min_frames=2,
             keep=lambda oid: oid in ITEM_OBJECT_IDS):
-        acc.add(f"Item_on_screen/{ITEM_OBJECT_IDS[track.type_id]}",
+        acc.add(f"ItemOnScreen/{ITEM_OBJECT_IDS[track.type_id]}",
                 track.frame_start, track.frame_stop)
 
 
@@ -276,7 +276,7 @@ def _defeat_frames(d: _Vars) -> List[tuple]:
 
     A stomp that only shells an enemy (Normal -> Shelled) is a defeat by stomp; a shelled
     enemy later kicked into others is a Shell kill for those it hits, which the state
-    table does not attribute, so kicks are reported via Shell_started_moving instead.
+    table does not attribute, so kicks are reported via ShellStartedMoving instead.
     """
     out = []
     for slot in range(N_SLOTS):
@@ -338,7 +338,7 @@ def _screen_labels(d: _Vars, completed: Optional[int]) -> List[str]:
 
 
 def _player_events(acc: EventAccumulator, d: _Vars, alive: List[bool]) -> None:
-    """Player_damaged, Player_died/*, Life_gained, Player_state/{suit}."""
+    """PlayerDamaged, PlayerDied/*, LifeGained, PlayerState/{suit}."""
     dying = d.col("player_is_dying")
     suit = d.col("powerup")           # Player_Suit ($00ED)
     lives = d.col("lives")
@@ -348,14 +348,14 @@ def _player_events(acc: EventAccumulator, d: _Vars, alive: List[bool]) -> None:
     # Death, with the cause stated by the game itself.
     death_frames = _transitions(dying, bool)
     for frame in death_frames:
-        acc.add(f"Player_died/{DEATH_CAUSES.get(dying[frame], 'Enemy')}", frame)
+        acc.add(f"PlayerDied/{DEATH_CAUSES.get(dying[frame], 'Enemy')}", frame)
 
     # Damage: the suit-lost poof counter, falling back to the post-hit blink timer.
     hit_frames = _transitions(suit_lost, bool) or _transitions(flash, bool)
     for frame in hit_frames:
         if any(-120 <= frame - df <= 120 for df in death_frames):
             continue
-        acc.add("Player_damaged", frame)
+        acc.add("PlayerDamaged", frame)
 
     # The suit the player wears, one row per continuous stretch, Small included, so the
     # form rows tile the frames where the player is alive in the level (``alive``, from
@@ -369,25 +369,25 @@ def _player_events(acc: EventAccumulator, d: _Vars, alive: List[bool]) -> None:
             name = SUIT_NAMES.get(value)
             if name is None:
                 continue
-            acc.add(f"Player_state/{name}", start, stop)
+            acc.add(f"PlayerState/{name}", start, stop)
 
     for frame in range(1, d.n):
         if lives[frame] > lives[frame - 1]:
-            acc.add("Life_gained", frame)
+            acc.add("LifeGained", frame)
 
 
 #: Timer / flag variables that each define an overlay state, and the state's name.
 STATE_TIMERS = (
     ("invincibility_timer", "Star"),        # Player_StarInv
-    ("invisibility_timer", "Hit_recovery"),  # Player_FlashInv (post-hit blink)
+    ("invisibility_timer", "HitRecovery"),  # Player_FlashInv (post-hit blink)
     ("flight_timer", "Flying"),             # Player_FlyTime
     ("statue_timer", "Statue"),             # Tanooki statue
-    ("kuribo_shoe", "Kuribo_shoe"),         # riding Kuribo's Shoe
+    ("kuribo_shoe", "KuriboShoe"),         # riding Kuribo's Shoe
 )
 
 
 def _state_timers(acc: EventAccumulator, d: _Vars) -> None:
-    """Player_state/{Star,Hit_recovery,Flying,Statue,Kuribo_shoe}, P-Switch, auto-scroll.
+    """PlayerState/{Star,HitRecovery,Flying,Statue,KuriboShoe}, P-Switch, auto-scroll.
 
     Each overlay state is the non-zero stretch of its timer or flag, cut at a death that
     falls inside it. The P-Switch is a level state rather than a player state and keeps
@@ -396,58 +396,58 @@ def _state_timers(acc: EventAccumulator, d: _Vars) -> None:
     death_frames = _transitions(d.col("player_is_dying"), bool)
     for var, name in STATE_TIMERS:
         for start, stop, _ in nonzero_runs(d.col(var), split_on_value_change=False):
-            acc.add(f"Player_state/{name}", start, clip(start, stop, death_frames))
+            acc.add(f"PlayerState/{name}", start, clip(start, stop, death_frames))
 
     for start, stop, _ in nonzero_runs(d.col("p_switch_timer"),
                                        split_on_value_change=False):
-        acc.add("P-Switch_started", start, stop)
+        acc.add("PSwitchStarted", start, stop)
         if stop < d.n - 1:
-            acc.add("P-Switch_expired", stop)
+            acc.add("PSwitchExpired", stop)
 
     autoscroll = d.col("level_hautoscroll")
     for frame in _transitions(autoscroll, bool):
-        acc.add("Auto_scroll_started", frame)
+        acc.add("AutoScrollStarted", frame)
 
 
 def _item_events(acc: EventAccumulator, d: _Vars) -> None:
-    """Item_collected/Coin and Block_smashed."""
+    """ItemCollected/Coin and BlockSmashed."""
     # Breaking a brick scores 10 points, held as 1 in the score field. Restricted to
     # frames where the player is airborne, since a brick is broken from below.
     score = d.col("score")
     in_air = d.col("in_air")
     for frame in range(1, d.n):
         if score[frame] - score[frame - 1] == 1 and in_air[frame - 1]:
-            acc.add("Block_smashed", frame)
+            acc.add("BlockSmashed", frame)
 
     coins = d.col("coins_p1")
     for frame in range(1, d.n):
         delta = coins[frame] - coins[frame - 1]
         if delta > 0 or delta <= -99:   # the counter wraps at 100 and awards a life
-            acc.add("Item_collected/Coin", frame)
+            acc.add("ItemCollected/Coin", frame)
 
 
 def _level_events(acc: EventAccumulator, d: _Vars, rep_index: Optional[int]
                   ) -> Optional[int]:
-    """Level_started / Level_restarted / Level_completed / Goal_card_collected.
+    """LevelStarted / LevelRestarted / LevelCompleted / GoalCardCollected.
 
     A level attempt can span several one-life .bk2 files, so only the first repetition at
     a given level starts it; the rest are restarts after a death.
 
     Returns:
-        The frame of Level_completed, or None if the level was not completed.
+        The frame of LevelCompleted, or None if the level was not completed.
     """
     if rep_index in (None, 0):
-        acc.add("Level_started", 0)
+        acc.add("LevelStarted", 0)
     else:
-        acc.add("Level_restarted", 0)
+        acc.add("LevelRestarted", 0)
 
     # Clearing the level is signalled by a goal card being added to the inventory.
     for card_var in ("goal_cards_p1_1", "goal_cards_p1_2", "goal_cards_p1_3"):
         cards = d.col(card_var)
         for frame in range(1, d.n):
             if cards[frame] > cards[frame - 1]:
-                acc.add("Level_completed", frame)
-                acc.add(f"Goal_card_collected/{CARD_NAMES.get(cards[frame], cards[frame])}",
+                acc.add("LevelCompleted", frame)
+                acc.add(f"GoalCardCollected/{CARD_NAMES.get(cards[frame], cards[frame])}",
                         frame)
                 return frame
     return None

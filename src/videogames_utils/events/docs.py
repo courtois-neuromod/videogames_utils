@@ -42,43 +42,43 @@ GAME_NAMES = {
 #: honest: "not implemented" means the pipeline has no detector for it.
 NOT_EMITTED: Dict[str, Dict[str, str]] = {
     "mario": {
-        "Player_died/Timeout": "implemented (death routine with the timer at 0); no "
+        "PlayerDied/Timeout": "implemented (death routine with the timer at 0); no "
                                "subject ever ran out of time",
-        "Item_collected/Powerup": "not implemented; the pickup is the first frame of the "
-                                  "`Player_state/Super`, `Fire` or `Star` row it starts "
-                                  "(a 1-up is `Life_gained`)",
-        "Enemy_attack/{enemy_type}": "not implemented (no verified RAM signal)",
-        "Projectile_on_screen/{projectile_type}": "implemented for Bowser's flames (id "
+        "ItemCollected/Powerup": "not implemented; the pickup is the first frame of the "
+                                  "`PlayerState/Super`, `Fire` or `Star` row it starts "
+                                  "(a 1-up is `LifeGained`)",
+        "EnemyAttack/{enemy_type}": "not implemented (no verified RAM signal)",
+        "ProjectileOnScreen/{projectile_type}": "implemented for Bowser's flames (id "
                                                   "0x15) but the flame never passes the "
                                                   "visibility test; not yet resolved",
-        "Shell_started_moving": "not implemented for SMB1",
-        "Checkpoint_reached": "deliberately not emitted: `HalfwayPage` is written at a "
+        "ShellStartedMoving": "not implemented for SMB1",
+        "CheckpointReached": "deliberately not emitted: `HalfwayPage` is written at a "
                               "death past the midpoint, not at the crossing",
-        "Level_restarted": "not applicable: an SMB1 repetition spans all its lives, and "
-                           "each restart is a `Screen/Level_intro` row",
+        "LevelRestarted": "not applicable: an SMB1 repetition spans all its lives, and "
+                           "each restart is a `Screen/LevelIntro` row",
         "Action/Other": "the NES pad has no extra buttons",
         "Action/Start": "never pressed",
         "Action/Select": "never pressed",
     },
     "mario3": {
-        "Player_state/Hammer": "never obtained",
-        "Item_collected/Powerup": "not implemented; the pickup is the first frame of the "
-                                  "`Player_state/*` row it starts",
-        "Enemy_attack/{enemy_type}": "not implemented (no verified RAM signal)",
-        "Enemy_defeated/Shell/{enemy_type}": "the object state table does not attribute "
+        "PlayerState/Hammer": "never obtained",
+        "ItemCollected/Powerup": "not implemented; the pickup is the first frame of the "
+                                  "`PlayerState/*` row it starts",
+        "EnemyAttack/{enemy_type}": "not implemented (no verified RAM signal)",
+        "EnemyDefeated/Shell/{enemy_type}": "the object state table does not attribute "
                                              "a shell kill to the shell; kicks are "
-                                             "reported as `Shell_started_moving`",
-        "Pipe_entered": "not implemented; pipe and door travel is the `Screen/Transition` "
+                                             "reported as `ShellStartedMoving`",
+        "PipeEntered": "not implemented; pipe and door travel is the `Screen/Transition` "
                         "row",
-        "Timer_warning_started": "not implemented for SMB3",
+        "TimerWarningStarted": "not implemented for SMB3",
         "Action/Other": "the NES pad has no extra buttons",
         "Action/Start": "never pressed",
         "Action/Select": "never pressed",
     },
     "shinobi": {
-        "Player_state/Hit_recovery": "requires the `hit_timer` variable, present only in "
+        "PlayerState/HitRecovery": "requires the `hit_timer` variable, present only in "
                                      "sidecars replayed with the current `data.json`",
-        "Weapon_powerup_expired/{powerup_type}": "not implemented (no RAM signal for the "
+        "WeaponPowerupExpired/{powerup_type}": "not implemented (no RAM signal for the "
                                                  "weapon upgrade)",
         "Action/Other": "never pressed",
         "Action/Start": "never pressed",
@@ -92,10 +92,10 @@ NOT_EMITTED["mariostars"] = {
 #: Per-game accuracy notes, in Markdown. Reviewed by hand when the generator changes.
 NOTES: Dict[str, str] = {
     "mario": """\
-- `Player_state/*` rows are read straight from the RAM: `PlayerStatus` ($0756,
+- `PlayerState/*` rows are read straight from the RAM: `PlayerStatus` ($0756,
   `player_status`) for the form, which the game writes on the very frame a mushroom or
   flower is collected or a hit lands; `StarInvincibleTimer` ($079F, `star_timer`) for
-  `Star`; and `InjuryTimer` ($079E, `injury_timer`) for `Hit_recovery`, the ~3.7 s after
+  `Star`; and `InjuryTimer` ($079E, `injury_timer`) for `HitRecovery`, the ~3.7 s after
   a hit during which enemy contact is ignored. Form rows (Small included) exist only on
   the frames where the player is alive in the level, so they are cut at a death and
   resume once the title card has gone. Validation recounts every row from the same
@@ -103,7 +103,7 @@ NOTES: Dict[str, str] = {
 - `Screen/*` rows come from the engine state (`GameEngineSubroutine`, $000E,
   `player_state`): 0/1/2/3/7 are transitions, 4/5 the end-of-level sequence, 11/6 the
   death, everything else play. A transition block at the start of the repetition or
-  right after a death is the title card (`Screen/Level_intro`). Every boundary was
+  right after a death is the title card (`Screen/LevelIntro`). Every boundary was
   checked on rendered emulator frames; a fall death is dated from `Player_Y_HighPos`
   leaving 1 (exact).
 - Enemy visibility uses the game's own `EnemyOffscrBitsMasked` ($03D8). Validated against
@@ -114,8 +114,8 @@ NOTES: Dict[str, str] = {
 - Enemy types come from `Enemy_ID` ($0016) decoded through the object table in
   1wErt3r's SMB disassembly. Cross-checked against mariostars on the levels played on
   both consoles.
-- `Level_completed` uses the engine's `PlayerEndLevel` routine, so it also fires on
-  castle levels where there is no flagpole. `Level_exited/Warp` is detected from the
+- `LevelCompleted` uses the engine's `PlayerEndLevel` routine, so it also fires on
+  castle levels where there is no flagpole. `LevelExited/Warp` is detected from the
   world/area index changing while the level never ended.
 - Recordings end at the life loss on the last life, so there is no game-over screen in
   this dataset. START is never pressed, so there is no pause.
@@ -129,11 +129,11 @@ NOTES: Dict[str, str] = {
 - Visibility uses bit 0 of `sprite_onscreen_flag_*`. This port exposes no per-sprite
   coordinates, so the Piranha Plant and Bullet Bill refinements of the NES do not apply:
   a plant counts for its whole cycle and roughly 10% of Bullet Bill tracks are cannons.
-- **Three RAM variables were added** for the `Player_state/*` rows: `player_status`
+- **Three RAM variables were added** for the `PlayerState/*` rows: `player_status`
   ($0756), `injury_timer` ($07AE) and `star_timer` ($07AF). The shipped `player_powerup`
   ($0578) and `star_power_timer` ($0553) do **not** hold what their names say (values
   such as 82 and 107, constants rather than a countdown) and are no longer read.
-- The title card (`Screen/Level_intro`) is invisible to the engine variable on this port,
+- The title card (`Screen/LevelIntro`) is invisible to the engine variable on this port,
   which idles at 8 while the card is up. It is read from `OperMode_Task` ($0772), decoded
   out of the shipped `reset` variable (a 4-byte BCD read at $0771 whose second byte pair
   is that task; 1 = card, 3 = game routines). The port fades in and out around the card,
@@ -144,9 +144,9 @@ NOTES: Dict[str, str] = {
   with the raw button preserved.
 """,
     "mario3": """\
-- `Player_state/*` rows are read straight from the RAM: `Player_Suit` ($00ED,
+- `PlayerState/*` rows are read straight from the RAM: `Player_Suit` ($00ED,
   `powerup`) for the form, `Player_StarInv` (`invincibility_timer`) for `Star`,
-  `Player_FlashInv` (`invisibility_timer`) for `Hit_recovery`, `Player_FlyTime`
+  `Player_FlashInv` (`invisibility_timer`) for `HitRecovery`, `Player_FlyTime`
   (`flight_timer`) for `Flying`, plus `statue_timer` and `kuribo_shoe`. A hit as Fire or
   in a suit drops the player to Super (verified: every 2 -> 1 transition coincides with
   `player_suit_lost`), so one form row ends and the next starts on the same frame.
@@ -157,7 +157,7 @@ NOTES: Dict[str, str] = {
   CLEAR). All checked on rendered frames.
 - **148 of 4063 recordings run on past a game-over death** into the world map with the
   GAME OVER dialog (median 18 s, up to 4 min), and one (sub-06 ses-010 w6l4 rep-000)
-  returns to the map and records a second attempt. These are `Screen/Game_over` and
+  returns to the map and records a second attempt. These are `Screen/GameOver` and
   `Screen/Map` rows, excluded from the alive frames, so they are easy to find and drop.
   They are recording overruns, not gameplay.
 - Object ids come from `Level_ObjectID` ($0671), decoded through the 170-entry `OBJ_*`
@@ -167,25 +167,25 @@ NOTES: Dict[str, str] = {
   vertically on 100.0%.
 - Cause of death comes from `Player_IsDying` ($00F1), which states it directly
   (1 = enemy, 2 = dropped off screen, 3 = time up).
-- `Goal_card_visible` is the roulette card object (`OBJ_ENDLEVELCARD`, 0x41), which is
+- `GoalCardVisible` is the roulette card object (`OBJ_ENDLEVELCARD`, 0x41), which is
   on screen 0.5-4 s before it is taken. It is untyped because its face cycles; the type
-  taken is in `Goal_card_collected`.
+  taken is in `GoalCardCollected`.
 - A level attempt spans up to three one-life `.bk2` files. The first gets
-  `Level_started`, the rest `Level_restarted`.
+  `LevelStarted`, the rest `LevelRestarted`.
 """,
     "shinobi": """\
 Shinobi is the least well characterised of the four datasets. There is **no public RAM
 map** for Shinobi III, and roughly half the entries in its `data.json` are
 background/palette scratch with no gameplay meaning.
 
-- `Enemy_defeated` is inferred from score increments and is **untyped**. Only the
+- `EnemyDefeated` is inferred from score increments and is **untyped**. Only the
   documented enemy values (200, 300, 400, 500) are counted. Other increments occur (1000
   is common, as are 250/350/700/3000/5000) but nothing available attributes them, so they
   are deliberately not counted rather than guessed at -- roughly a third of scoring events
   are therefore not represented.
-- There are **no** `Enemy_on_screen` events: nothing in the current RAM map locates
+- There are **no** `EnemyOnScreen` events: nothing in the current RAM map locates
   enemy objects.
-- `Screen/*` and `Level_completed` come from the (misnamed) `blackScreen` byte at
+- `Screen/*` and `LevelCompleted` come from the (misnamed) `blackScreen` byte at
   $FF0024, a screen-mode value: 40 is the scroll lock of an enemy wave (ordinary play,
   not a black screen); 22 or 62 then 20 is a section fade; 20 from the frame health
   reaches 0 is the death animation, 21 the life loss and the fade back in; 21 with lives
@@ -194,18 +194,18 @@ background/palette scratch with no gameplay meaning.
   trailing fade is present in 519 of 536 cleared repetitions and in none of the 130
   failed ones; the 17 misses are recordings that stopped inside the last enemy wave. All
   checked on rendered frames.
-- `Player_died` is durational: `lives` only drops 2-6 s after the fact, once the death
+- `PlayerDied` is durational: `lives` only drops 2-6 s after the fact, once the death
   animation and fade have played, so `onset` is the frame health reached 0 and
   `duration` runs to the life loss.
-- `Player_state/Normal` exists so that every dataset has a form for every frame of play;
+- `PlayerState/Normal` exists so that every dataset has a form for every frame of play;
   Shinobi has no forms. The temporary weapon upgrade is not tracked, and
-  `Weapon_powerup_started/Ninjutsu` marks a ninjutsu cast (8 repetitions), not a weapon
+  `WeaponPowerupStarted/Ninjutsu` marks a ninjutsu cast (8 repetitions), not a weapon
   upgrade.
-- `Player_state/Hit_recovery` uses `hit_timer`, a RAM variable added to `data.json`
+- `PlayerState/HitRecovery` uses `hit_timer`, a RAM variable added to `data.json`
   ($FF4165; the Genesis core exposes work RAM word-swapped, so the byte seen at raw
   offset $FF4164 is declared one higher). It is set to 80 or 64 on the frame health drops
   and counts down once per frame while the player flashes; only stretches that begin on
-  a `Player_damaged` are emitted. Rows appear once the sidecars have been replayed with
+  a `PlayerDamaged` are emitted. Rows appear once the sidecars have been replayed with
   that variable.
 """,
 }
@@ -312,14 +312,14 @@ repetition's `gamelogs/*_summary.json`, keyed by the `stim_file` of the containe
   cover it from its first frame to its last, so exactly one is active at any frame.
   `Screen/Gameplay` is the complement of the non-play screens (title card, death
   sequence, end-of-level sequence, transitions, game over).
-- **`Player_state/*` form rows** (Small, Super, Fire and the SMB3 suits; Normal in
+- **`PlayerState/*` form rows** (Small, Super, Fire and the SMB3 suits; Normal in
   Shinobi) are mutually exclusive and tile the frames on which the player is alive in the
-  level, i.e. outside `Screen/Death`, `Screen/Level_intro`, `Screen/Game_over` and
-  `Screen/Map`. The other `Player_state/*` rows (Star, Hit_recovery, Flying, ...) are
+  level, i.e. outside `Screen/Death`, `Screen/LevelIntro`, `Screen/GameOver` and
+  `Screen/Map`. The other `PlayerState/*` rows (Star, HitRecovery, Flying, ...) are
   overlays that can co-occur with a form.
 - Names are hierarchical: the part before the first `/` is the family. `{{...}}` in the
   table below is filled at generation time with a decoded object name, e.g.
-  `Enemy_on_screen/Goomba`.
+  `EnemyOnScreen/Goomba`.
 
 ## Event types
 
@@ -339,9 +339,9 @@ names need updating; the mapping for this game is:
 {_renamed_table(task)}
 
 The former `Powerup_started/*` and `Powerup_expired/*` point events became the
-durational `Player_state/*` rows (the onset of `Player_state/Super` is the old
-`Powerup_started/Super`, the end of `Player_state/Star` the old `Powerup_expired/Star`),
-and `Powerup_started/Small`, emitted on a hit, is the start of a `Player_state/Small`
+durational `PlayerState/*` rows (the onset of `PlayerState/Super` is the old
+`Powerup_started/Super`, the end of `PlayerState/Star` the old `Powerup_expired/Star`),
+and `Powerup_started/Small`, emitted on a hit, is the start of a `PlayerState/Small`
 row.
 
 ## Validation

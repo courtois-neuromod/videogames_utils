@@ -14,7 +14,7 @@ each dataset's `task-<task>_events.json`.
 | `shinobi` | Shinobi III | Genesis | 246,374 | 25 | 666 |
 
 `mario3` has many more distinct types only because SMB3 has ~170 named object types, and
-both `Enemy_on_screen/{type}` and `Enemy_defeated/{method}/{type}` expand one per species.
+both `EnemyOnScreen/{type}` and `EnemyDefeated/{method}/{type}` expand one per species.
 Counts are from the files regenerated on 2026-09-12.
 
 Each dataset's `code/annotations/README.md` is generated from the same vocabulary
@@ -28,7 +28,12 @@ produced and why. This document is the cross-game reference behind those.
 
 Event names are hierarchical: the part before the `/` is the family, the part after is a
 qualifier. `{type}` in a heading means the suffix is filled in at generation time with a
-decoded object name, e.g. `Enemy_on_screen/Goomba`.
+decoded object name, e.g. `EnemyOnScreen/Goomba`.
+
+Every segment is UpperCamelCase (`PlayerState/HitRecovery`), except the `gym-retro_game`
+container row, which keeps the name it has in the plain `_events.tsv`. Until 2026-09 the
+segments were `Capitalized_snake_case` (`Player_state/Hit_recovery`); each entry lists its
+old spelling among its former names.
 
 ### Columns
 
@@ -59,26 +64,26 @@ reuses the same enumeration). Values, from the disassembly's dispatch table:
 
 | value | routine | used for |
 |---|---|---|
-| 0 | `Entrance_GameTimerSetup` | `Screen/Level_intro` (the black title card, at a level start or after a life loss) or `Screen/Transition` (the ~24-frame black screen between areas) |
+| 0 | `Entrance_GameTimerSetup` | `Screen/LevelIntro` (the black title card, at a level start or after a life loss) or `Screen/Transition` (the ~24-frame black screen between areas) |
 | 1 | `Vine_AutoClimb` | `Screen/Transition` |
-| 2 | `SideExitPipeEntry` | `Pipe_entered`, `Screen/Transition` |
-| 3 | `VerticalPipeEntry` | `Pipe_entered`, `Screen/Transition` |
-| 4 | `FlagpoleSlide` | `Level_completed` (fallback), start of `Screen/Level_end` |
-| 5 | `PlayerEndLevel` | `Level_completed`, `Screen/Level_end` |
-| 6 | `PlayerLoseLife` | `Player_died/Fall` (end of; see the fall-timing note), end of `Screen/Death` |
+| 2 | `SideExitPipeEntry` | `PipeEntered`, `Screen/Transition` |
+| 3 | `VerticalPipeEntry` | `PipeEntered`, `Screen/Transition` |
+| 4 | `FlagpoleSlide` | `LevelCompleted` (fallback), start of `Screen/LevelEnd` |
+| 5 | `PlayerEndLevel` | `LevelCompleted`, `Screen/LevelEnd` |
+| 6 | `PlayerLoseLife` | `PlayerDied/Fall` (end of; see the fall-timing note), end of `Screen/Death` |
 | 7 | `PlayerEntrance` | `Screen/Transition` (Mario emerging from a pipe or dropping into the area) |
 | 8 | `PlayerCtrlRoutine` | normal play, `Screen/Gameplay` |
-| 9 | `PlayerChangeSize` | start of `Player_state/Super` (the status byte changes on this frame) |
-| 10 | `PlayerInjuryBlink` | `Player_damaged`; the form row ends and `Player_state/Hit_recovery` starts |
-| 11 | `PlayerDeath` | `Player_died/Enemy`, start of `Screen/Death` |
-| 12 | `PlayerFireFlower` | start of `Player_state/Fire` |
+| 9 | `PlayerChangeSize` | start of `PlayerState/Super` (the status byte changes on this frame) |
+| 10 | `PlayerInjuryBlink` | `PlayerDamaged`; the form row ends and `PlayerState/HitRecovery` starts |
+| 11 | `PlayerDeath` | `PlayerDied/Enemy`, start of `Screen/Death` |
+| 12 | `PlayerFireFlower` | start of `PlayerState/Fire` |
 
 Using the engine rather than counters matters because counters lag: `lives` only drops
 once the death animation has finished, several seconds after the death itself.
 
 ### On-screen visibility
 
-`Enemy_on_screen` and friends are **screen-visibility** events: they start when the object
+`EnemyOnScreen` and friends are **screen-visibility** events: they start when the object
 becomes visible and their `duration` runs until it leaves the screen or is defeated. An
 object that leaves and returns produces two events. The predicate differs per game and
 each was validated against independently computed screen geometry:
@@ -99,10 +104,10 @@ be horizontally on screen while sitting entirely above or below it. The vertical
 removes 21% of the frames the horizontal test alone would have called visible.
 
 Two deliberate exceptions use slot occupancy on its own, and mean "spawned" rather than
-"on screen": SMB1's `Flagpole_visible` / `Castle_visible` (scenery never clears the enemy
+"on screen": SMB1's `FlagpoleVisible` / `CastleVisible` (scenery never clears the enemy
 offscreen test — 0 of 479 frames in a sampled replay), and any repetition whose
 `_variables.json` predates the visibility addresses. shinobi has no object visibility at
-all; its `Enemy_defeated` is inferred from score deltas.
+all; its `EnemyDefeated` is inferred from score deltas.
 
 Tracks shorter than 5 frames are dropped as slot churn, and gaps of up to 4 frames are
 bridged, because a one-frame flicker of the slot bookkeeping is not a disappearance the
@@ -118,11 +123,11 @@ and `Screen/Gameplay` is the complement of the rest. All are durational.
 | Row | Meaning | mario / mariostars | mario3 | shinobi |
 |---|---|---|---|---|
 | `Screen/Gameplay` | The player controls the character in the level. | engine 8, 9, 10, 12 | everything not below | `blackScreen` 0 or 40 (40 is the scroll lock of an enemy wave, not a black screen) |
-| `Screen/Level_intro` | The level's title card. | engine 0 (NES) / `OperMode_Task` ≠ 3 (SNES) at the start of the repetition or directly after a death: the black "WORLD x-y / Mario × n" card, 86-193 frames | — (a repetition opens in the level with a short fade-in) | — |
+| `Screen/LevelIntro` | The level's title card. | engine 0 (NES) / `OperMode_Task` ≠ 3 (SNES) at the start of the repetition or directly after a death: the black "WORLD x-y / Mario × n" card, 86-193 frames | — (a repetition opens in the level with a short fade-in) | — |
 | `Screen/Death` | The death sequence, no control. | engine 11 through 6, or from the fall (see below) to 6 | `player_is_dying` ≠ 0, ~200 frames | from the frame `health` reaches 0 to the life loss: 127-344 frames of animation and fade |
-| `Screen/Level_end` | The end-of-level sequence, no control. | engine 4 then 5: flagpole slide, walk into the castle, time bonus, 6-14 s | from the goal card to the end of the recording: card animation and COURSE CLEAR, ~340 frames | the end-of-level fade running to the end of the recording (`blackScreen` 22 or 62): ~380 frames of ROUND CLEAR tally on level 1, 15-16 frames on levels 4 and 5 |
+| `Screen/LevelEnd` | The end-of-level sequence, no control. | engine 4 then 5: flagpole slide, walk into the castle, time bonus, 6-14 s | from the goal card to the end of the recording: card animation and COURSE CLEAR, ~340 frames | the end-of-level fade running to the end of the recording (`blackScreen` 22 or 62): ~380 frames of ROUND CLEAR tally on level 1, 15-16 frames on levels 4 and 5 |
 | `Screen/Transition` | Between areas, no control. | engine 1, 2, 3, 7 and the 0 / task ≠ 3 stretch between them: pipe travel, vine climb, the exit from a bonus area, 24 frames of black | `player_halt_game` ≥ 128 while the next area loads, plus the pipe-entry hold before it | section fades (22 or 62 then 20, ~80 frames) and the fade back in after a death (21 then 20, ~85 frames) |
-| `Screen/Game_over` | The GAME OVER screen. | — (recordings end at the life loss) | `level_music` = 0 with `lives` < 0 after the death: the map with the GAME OVER dialog. **148 of 4063 recordings** ran on into this instead of stopping at the death, for a median 18 s and up to 4 min. | `blackScreen` 21 with `lives` < 0, 3 recordings |
+| `Screen/GameOver` | The GAME OVER screen. | — (recordings end at the life loss) | `level_music` = 0 with `lives` < 0 after the death: the map with the GAME OVER dialog. **148 of 4063 recordings** ran on into this instead of stopping at the death, for a median 18 s and up to 4 min. | `blackScreen` 21 with `lives` < 0, 3 recordings |
 | `Screen/Map` | The SMB3 world map. | — | `level_music` = 0 with `lives` ≥ 0 after the death: one recording (sub-06 ses-010 w6l4 rep-000) returned to the map and recorded a second attempt at the level | — |
 
 Every boundary was checked on rendered emulator frames. The SNES title card needs
@@ -131,9 +136,9 @@ card is up); it is read out of the shipped `reset` variable, a 4-byte little-end
 read at $0771 whose second byte pair is that task (1 = card, 3 = game routines). The SNES
 fades in and out around the card, so those boundaries are within ~30 frames (0.5 s).
 
-The `Player_state` **form rows** (`Small`, `Super`, `Fire` and the mario3 suits; `Normal`
+The `PlayerState` **form rows** (`Small`, `Super`, `Fire` and the mario3 suits; `Normal`
 in shinobi) tile the frames on which the player is *alive in the level*: every frame not
-inside a `Screen/Death`, `Screen/Level_intro`, `Screen/Game_over` or `Screen/Map` row.
+inside a `Screen/Death`, `Screen/LevelIntro`, `Screen/GameOver` or `Screen/Map` row.
 Together, the two families give a form for every frame of play and a screen for every
 frame of the recording.
 
@@ -167,14 +172,14 @@ both variable names are given as *NES / SNES*.
 
 | Event | Description | Detection |
 |---|---|---|
-| `Player_damaged` | Hit, losing the current power-up state. | `player_state` / `player_action_state` transitions to **10** (`PlayerInjuryBlink`). |
-| `Player_died/Enemy` | Killed by an enemy or other damaging object. | Engine transitions to **11** (`PlayerDeath`). |
-| `Player_died/Fall` | Fell into a pit. | Engine transitions to **6** (`PlayerLoseLife`) with no **11** in the preceding 400 frames — a fall bypasses the death routine. `onset` is walked back to the frame the player left the screen (see below); `duration` runs to the life loss. |
-| `Player_died/Timeout` | The level timer ran out. | Engine reaches **11** while `time` / `time_units` has been 0 for the preceding 120 frames. |
-| `Life_gained` | Gained an extra life. | `lives` increases. |
-| `Player_state/Small`, `Player_state/Super`, `Player_state/Fire` | The form the player is in, one row per continuous stretch. Together they tile the frames on which the player is alive in the level. | Maximal runs of `player_status` == **0** / **1** / **2** over the alive frames (outside `Screen/Death` and `Screen/Level_intro`). `PlayerStatus` is written on the very frame the item is collected (engine **9** / **12**) and on the hit frame (engine **10**), so the row starts and ends on those frames. A row is cut at a death and Small resumes once the title card has gone. |
-| `Player_state/Star` | Star invincibility, whole period. | Non-zero run of `star_timer` (`StarInvincibleTimer`, $079F / $07AF): 35 → 0 on the 21-frame interval clock, ~730 frames. |
-| `Player_state/Hit_recovery` | Post-hit invulnerability: the ~3.7 s after a hit during which `InjurePlayer` ignores enemy contact and the player blinks. | Non-zero run of `injury_timer` (`InjuryTimer`, $079E / $07AE, **new**): 8 → 0 on the interval clock, paused during the shrink animation. |
+| `PlayerDamaged` | Hit, losing the current power-up state. | `player_state` / `player_action_state` transitions to **10** (`PlayerInjuryBlink`). |
+| `PlayerDied/Enemy` | Killed by an enemy or other damaging object. | Engine transitions to **11** (`PlayerDeath`). |
+| `PlayerDied/Fall` | Fell into a pit. | Engine transitions to **6** (`PlayerLoseLife`) with no **11** in the preceding 400 frames — a fall bypasses the death routine. `onset` is walked back to the frame the player left the screen (see below); `duration` runs to the life loss. |
+| `PlayerDied/Timeout` | The level timer ran out. | Engine reaches **11** while `time` / `time_units` has been 0 for the preceding 120 frames. |
+| `LifeGained` | Gained an extra life. | `lives` increases. |
+| `PlayerState/Small`, `PlayerState/Super`, `PlayerState/Fire` | The form the player is in, one row per continuous stretch. Together they tile the frames on which the player is alive in the level. | Maximal runs of `player_status` == **0** / **1** / **2** over the alive frames (outside `Screen/Death` and `Screen/LevelIntro`). `PlayerStatus` is written on the very frame the item is collected (engine **9** / **12**) and on the hit frame (engine **10**), so the row starts and ends on those frames. A row is cut at a death and Small resumes once the title card has gone. |
+| `PlayerState/Star` | Star invincibility, whole period. | Non-zero run of `star_timer` (`StarInvincibleTimer`, $079F / $07AF): 35 → 0 on the 21-frame interval clock, ~730 frames. |
+| `PlayerState/HitRecovery` | Post-hit invulnerability: the ~3.7 s after a hit during which `InjurePlayer` ignores enemy contact and the player blinks. | Non-zero run of `injury_timer` (`InjuryTimer`, $079E / $07AE, **new**): 8 → 0 on the interval clock, paused during the shrink animation. |
 
 > On the SNES, `player_status`, `injury_timer` and `star_timer` are new in this release
 > ($7E0756, $7E07AE, $7E07AF). The shipped `player_powerup` ($0578) and `star_power_timer`
@@ -190,26 +195,26 @@ both variable names are given as *NES / SNES*.
 
 | Event | Description | Detection |
 |---|---|---|
-| `Item_collected/Coin` | Collected a coin. | `coins` / `player_coins` increases, or drops by ≥99 (the counter wraps at 100 and awards a life). |
-| `Item_on_screen/Powerup` | A mushroom, flower or star became visible. | An enemy slot holds object id **`0x2E`** (`PowerUpObject`) and is visible. |
-| `Block_smashed` | Destroyed a brick from below. | `score` increases by exactly **5** (NES, BCD in units of 10 points) or **50** (SNES, actual points) while the player is airborne (`jump_airborne` ∈ {1,2} on the NES), before the level ends. The end-of-level time bonus produces the same increment, so scoring stops at the level end. |
+| `ItemCollected/Coin` | Collected a coin. | `coins` / `player_coins` increases, or drops by ≥99 (the counter wraps at 100 and awards a life). |
+| `ItemOnScreen/Powerup` | A mushroom, flower or star became visible. | An enemy slot holds object id **`0x2E`** (`PowerUpObject`) and is visible. |
+| `BlockSmashed` | Destroyed a brick from below. | `score` increases by exactly **5** (NES, BCD in units of 10 points) or **50** (SNES, actual points) while the player is airborne (`jump_airborne` ∈ {1,2} on the NES), before the level ends. The end-of-level time bonus produces the same increment, so scoring stops at the level end. |
 
 ### Enemies
 
 | Event | Description | Detection |
 |---|---|---|
-| `Enemy_on_screen/{type}` | An enemy became visible. | A visible track opens in an object slot. Type from `enemy_id_*` / `sprite_number_*` decoded through the SMB1 object table. `duration` spans the visible lifetime. |
-| `Enemy_defeated/Stomp/{type}` | Defeated by jumping on it. | `Enemy_State` / `sprite_state_*` transitions into **4** from a non-kill state. |
-| `Enemy_defeated/Projectile/{type}` | Defeated by a fireball or similar. | The same array transitions into **34**. |
-| `Enemy_defeated/Shell/{type}` | Defeated by a moving shell. | The same array transitions into **132**. |
-| `Projectile_on_screen/{type}` | A Bowser flame is on screen. | A visible track whose object id is **`0x15`** (BowserFlame). Bullet Bills are **not** here — see below. |
+| `EnemyOnScreen/{type}` | An enemy became visible. | A visible track opens in an object slot. Type from `enemy_id_*` / `sprite_number_*` decoded through the SMB1 object table. `duration` spans the visible lifetime. |
+| `EnemyDefeated/Stomp/{type}` | Defeated by jumping on it. | `Enemy_State` / `sprite_state_*` transitions into **4** from a non-kill state. |
+| `EnemyDefeated/Projectile/{type}` | Defeated by a fireball or similar. | The same array transitions into **34**. |
+| `EnemyDefeated/Shell/{type}` | Defeated by a moving shell. | The same array transitions into **132**. |
+| `ProjectileOnScreen/{type}` | A Bowser flame is on screen. | A visible track whose object id is **`0x15`** (BowserFlame). Bullet Bills are **not** here — see below. |
 
 The defeat is emitted at the **first** frame of the kill state, i.e. when the enemy is
 hit — not when its corpse finishes falling. This matters because on a projectile kill the
 game deliberately moves the dying enemy's bounding box off screen, so reading the end of
 the animation would place the event after the enemy stopped being visible.
 
-A defeat names both the method and the species, e.g. `Enemy_defeated/Stomp/Goomba`.
+A defeat names both the method and the species, e.g. `EnemyDefeated/Stomp/Goomba`.
 
 **Object ids that are not enemies** and are excluded from `Enemy_*`: moving platforms and
 lifts (`0x24`–`0x2C`), items and scenery (`0x16`, `0x2E`, `0x2F`, `0x30`, `0x31`, `0x32`,
@@ -231,7 +236,7 @@ session this took `BulletBill` from 25 tracks to 267.
 The id is shared with the stationary cannon that fires them. On the NES, where per-slot X
 is available, a track is kept only if it moves in X on at least half its frames; 90% of
 visible tracks pass. The SNES port exposes no per-sprite X, so the test cannot run there
-and roughly 10% of its `Enemy_on_screen/BulletBill` tracks are expected to be the cannon.
+and roughly 10% of its `EnemyOnScreen/BulletBill` tracks are expected to be the cannon.
 
 #### Piranha Plants count only while out of the pipe
 
@@ -259,15 +264,15 @@ slot. Slot occupancy is given by `Enemy_Flag`, not by the id.
 
 | Event | Description | Detection |
 |---|---|---|
-| `Pipe_entered` | Entered a pipe. | Engine transitions to **2** (`SideExitPipeEntry`) or **3** (`VerticalPipeEntry`). |
-| `Flagpole_visible` | The end-of-level flagpole came on screen. | An object slot holds id **`0x30`** (`FlagpoleFlagObject`). Judged by slot occupancy alone, because scenery never clears the enemy offscreen test. |
-| `Castle_visible` | The end-of-level star flag / castle came on screen. | The same, with id **`0x31`** (`StarFlagObject`). |
-| `Timer_warning_started` | The game began warning that time is short. | NES: bit **`0x40`** of `event_music_queue` (the game's own "time running out" music cue). SNES: the timer crossing 100 downward during normal play. |
-| `Level_started` | A gameplay attempt began. | Frame 0 of the repetition. |
-| `Level_completed` | The level was finished. | Engine transitions to **5** (`PlayerEndLevel`), falling back to **4** (`FlagpoleSlide`). Using `PlayerEndLevel` means this also fires on castle levels, which end at an axe rather than a flagpole. |
-| `Level_exited/Warp` | The player left through a warp-zone pipe. | The `world` / `area` index changes **and** the level never ended. Only fires on w1-2 and w4-2, the two warp-zone levels. |
+| `PipeEntered` | Entered a pipe. | Engine transitions to **2** (`SideExitPipeEntry`) or **3** (`VerticalPipeEntry`). |
+| `FlagpoleVisible` | The end-of-level flagpole came on screen. | An object slot holds id **`0x30`** (`FlagpoleFlagObject`). Judged by slot occupancy alone, because scenery never clears the enemy offscreen test. |
+| `CastleVisible` | The end-of-level star flag / castle came on screen. | The same, with id **`0x31`** (`StarFlagObject`). |
+| `TimerWarningStarted` | The game began warning that time is short. | NES: bit **`0x40`** of `event_music_queue` (the game's own "time running out" music cue). SNES: the timer crossing 100 downward during normal play. |
+| `LevelStarted` | A gameplay attempt began. | Frame 0 of the repetition. |
+| `LevelCompleted` | The level was finished. | Engine transitions to **5** (`PlayerEndLevel`), falling back to **4** (`FlagpoleSlide`). Using `PlayerEndLevel` means this also fires on castle levels, which end at an axe rather than a flagpole. |
+| `LevelExited/Warp` | The player left through a warp-zone pipe. | The `world` / `area` index changes **and** the level never ended. Only fires on w1-2 and w4-2, the two warp-zone levels. |
 
-> **`Checkpoint_reached` is deliberately not emitted.** Its only candidate signal,
+> **`CheckpointReached` is deliberately not emitted.** Its only candidate signal,
 > `HalfwayPage` (`$075B`), is written when the player *dies* past the midpoint in order to
 > place the respawn — not when the midpoint is crossed. In a sampled w1-1 replay it is
 > non-zero only during the two death/respawn sequences.
@@ -284,17 +289,17 @@ Goomba, ParaGoomba, RedTroopa and VenusFireTrap — that level's actual roster.
 
 | Event | Description | Detection |
 |---|---|---|
-| `Player_damaged` | Hit, losing the current suit. | `player_suit_lost` (the suit-lost poof counter) becomes non-zero, falling back to `invisibility_timer` (`Player_FlashInv`, the post-hit blink). Suppressed within 120 frames of a death. |
-| `Player_died/Enemy` | Killed by an enemy. | `player_is_dying` (`$00F1`) becomes **1**. |
-| `Player_died/Fall` | Dropped off the bottom of the screen. | `player_is_dying` becomes **2**. |
-| `Player_died/Timeout` | Time ran out. | `player_is_dying` becomes **3**. |
-| `Life_gained` | Gained an extra life. | `lives` increases. |
-| `Player_state/{Small,Super,Fire,Raccoon,Frog,Tanooki,Hammer}` | The suit the player wears, one row per continuous stretch. Together they tile the frames on which the player is alive in the level. | Maximal runs of a constant `powerup` (`Player_Suit`, `$00ED`) over the alive frames (outside `Screen/Death`, `Screen/Game_over`, `Screen/Map`). A hit as Fire or in a suit drops the player to Super, so one row ends and the next starts on the same frame. |
-| `Player_state/Star` | Star invincibility. | `invincibility_timer` (`Player_StarInv`) non-zero run, ~448 frames. |
-| `Player_state/Hit_recovery` | Post-hit invulnerability while blinking, ~113 frames. | `invisibility_timer` (`Player_FlashInv`) non-zero run. |
-| `Player_state/Flying` | Flying with a flight-capable suit. | `flight_timer` (`Player_FlyTime`) non-zero run. |
-| `Player_state/Statue`, `Player_state/Kuribo_shoe` | Tanooki statue form; riding Kuribo's Shoe. | `statue_timer` / `kuribo_shoe` non-zero run. Both are rare (1 and 5 repetitions in the corpus). |
-| `P-Switch_started`, `P-Switch_expired` | A P-Switch is active. | `p_switch_timer` (`Level_PSwitchCnt`) non-zero run. |
+| `PlayerDamaged` | Hit, losing the current suit. | `player_suit_lost` (the suit-lost poof counter) becomes non-zero, falling back to `invisibility_timer` (`Player_FlashInv`, the post-hit blink). Suppressed within 120 frames of a death. |
+| `PlayerDied/Enemy` | Killed by an enemy. | `player_is_dying` (`$00F1`) becomes **1**. |
+| `PlayerDied/Fall` | Dropped off the bottom of the screen. | `player_is_dying` becomes **2**. |
+| `PlayerDied/Timeout` | Time ran out. | `player_is_dying` becomes **3**. |
+| `LifeGained` | Gained an extra life. | `lives` increases. |
+| `PlayerState/{Small,Super,Fire,Raccoon,Frog,Tanooki,Hammer}` | The suit the player wears, one row per continuous stretch. Together they tile the frames on which the player is alive in the level. | Maximal runs of a constant `powerup` (`Player_Suit`, `$00ED`) over the alive frames (outside `Screen/Death`, `Screen/GameOver`, `Screen/Map`). A hit as Fire or in a suit drops the player to Super, so one row ends and the next starts on the same frame. |
+| `PlayerState/Star` | Star invincibility. | `invincibility_timer` (`Player_StarInv`) non-zero run, ~448 frames. |
+| `PlayerState/HitRecovery` | Post-hit invulnerability while blinking, ~113 frames. | `invisibility_timer` (`Player_FlashInv`) non-zero run. |
+| `PlayerState/Flying` | Flying with a flight-capable suit. | `flight_timer` (`Player_FlyTime`) non-zero run. |
+| `PlayerState/Statue`, `PlayerState/KuriboShoe` | Tanooki statue form; riding Kuribo's Shoe. | `statue_timer` / `kuribo_shoe` non-zero run. Both are rare (1 and 5 repetitions in the corpus). |
+| `PSwitchStarted`, `PSwitchExpired` | A P-Switch is active. | `p_switch_timer` (`Level_PSwitchCnt`) non-zero run. |
 
 > `player_is_dying` states the cause of death outright. It replaces the previous
 > timer-freeze plus X-position heuristic, and moved 942 repetitions from the catch-all
@@ -304,14 +309,14 @@ Goomba, ParaGoomba, RedTroopa and VenusFireTrap — that level's actual roster.
 
 | Event | Description | Detection |
 |---|---|---|
-| `Enemy_on_screen/{type}` | An enemy became visible. | A visible track opens in an object slot (`Objects_State != 0` and both `Objects_SprHVis` and `Objects_SprVVis` clear); type from `object_id_*`. |
-| `Enemy_defeated/Stomp/{type}` | Stomped. | `object_state_*` enters **7** (`OBJSTATE_SQUASHED`), or enters **3** (`OBJSTATE_SHELLED`) from a non-shell state — a stomp that shells an enemy. |
-| `Enemy_defeated/Projectile/{type}` | Killed by a projectile or tail. | `object_state_*` enters **6** (`OBJSTATE_KILLED`) or **8** (`OBJSTATE_POOFDEATH`). |
-| `Shell_started_moving` | A shelled enemy was kicked. | `object_state_*` enters **5** (`OBJSTATE_KICKED`). |
-| `Projectile_on_screen/{type}` | A hammer, fireball, cannonball etc. became visible. | `special_obj_id_*` (`SpecialObj_ID`) non-zero, decoded through the 22-entry `SOBJ_*` table. |
-| `Item_on_screen/{1Up,Starman,Mushroom,FireFlower,SuperLeaf}` | A power-up became visible. | Object ids `0x0B`, `0x0C`, `0x0D`, `0x19`, `0x1E`. |
-| `Item_collected/Coin` | Collected a coin. | `coins_p1` increases, or wraps at 100. |
-| `Block_smashed` | Destroyed a brick. | `score` increases by exactly **1** (10 points) while `in_air` is set. |
+| `EnemyOnScreen/{type}` | An enemy became visible. | A visible track opens in an object slot (`Objects_State != 0` and both `Objects_SprHVis` and `Objects_SprVVis` clear); type from `object_id_*`. |
+| `EnemyDefeated/Stomp/{type}` | Stomped. | `object_state_*` enters **7** (`OBJSTATE_SQUASHED`), or enters **3** (`OBJSTATE_SHELLED`) from a non-shell state — a stomp that shells an enemy. |
+| `EnemyDefeated/Projectile/{type}` | Killed by a projectile or tail. | `object_state_*` enters **6** (`OBJSTATE_KILLED`) or **8** (`OBJSTATE_POOFDEATH`). |
+| `ShellStartedMoving` | A shelled enemy was kicked. | `object_state_*` enters **5** (`OBJSTATE_KICKED`). |
+| `ProjectileOnScreen/{type}` | A hammer, fireball, cannonball etc. became visible. | `special_obj_id_*` (`SpecialObj_ID`) non-zero, decoded through the 22-entry `SOBJ_*` table. |
+| `ItemOnScreen/{1Up,Starman,Mushroom,FireFlower,SuperLeaf}` | A power-up became visible. | Object ids `0x0B`, `0x0C`, `0x0D`, `0x19`, `0x1E`. |
+| `ItemCollected/Coin` | Collected a coin. | `coins_p1` increases, or wraps at 100. |
+| `BlockSmashed` | Destroyed a brick. | `score` increases by exactly **1** (10 points) while `in_air` is set. |
 
 Sixty object ids are excluded from `Enemy_*` as scenery, platforms, items or engine
 control objects. The exclusion list is derived from the disassembly's own `OBJ_*` names
@@ -321,12 +326,12 @@ rather than hand-written, so it stays correct if the table is regenerated.
 
 | Event | Description | Detection |
 |---|---|---|
-| `Level_started` | First attempt at this level in the run. | Frame 0 of a `rep-000` file. |
-| `Level_restarted` | A retry after dying. | Frame 0 of a `rep-001`+ file. In SMB3 one level attempt spans up to three one-life `.bk2` files. |
-| `Goal_card_visible` | The end-of-level roulette card is on screen, 0.5-4 s before it is taken. Untyped: its face cycles until touched. | A visible track of object id **`0x41`** (`OBJ_ENDLEVELCARD`). An earlier release keyed on the card items `0x21`-`0x23` (`PowerUpMushCard` etc.), which never appear at a level end, so the event never fired. |
-| `Level_completed` | Finished the level. | A goal card enters the inventory (`goal_cards_p1_{1,2,3}` increases). |
-| `Goal_card_collected/{Mushroom,Flower,Star,…}` | Which card was collected. | The same transition; the card value names it. |
-| `Auto_scroll_started` | The level began scrolling on its own. | `level_hautoscroll` (`Level_HAutoScroll`) becomes non-zero. |
+| `LevelStarted` | First attempt at this level in the run. | Frame 0 of a `rep-000` file. |
+| `LevelRestarted` | A retry after dying. | Frame 0 of a `rep-001`+ file. In SMB3 one level attempt spans up to three one-life `.bk2` files. |
+| `GoalCardVisible` | The end-of-level roulette card is on screen, 0.5-4 s before it is taken. Untyped: its face cycles until touched. | A visible track of object id **`0x41`** (`OBJ_ENDLEVELCARD`). An earlier release keyed on the card items `0x21`-`0x23` (`PowerUpMushCard` etc.), which never appear at a level end, so the event never fired. |
+| `LevelCompleted` | Finished the level. | A goal card enters the inventory (`goal_cards_p1_{1,2,3}` increases). |
+| `GoalCardCollected/{Mushroom,Flower,Star,…}` | Which card was collected. | The same transition; the card value names it. |
+| `AutoScrollStarted` | The level began scrolling on its own. | `level_hautoscroll` (`Level_HAutoScroll`) becomes non-zero. |
 
 ---
 
@@ -340,38 +345,38 @@ counter whose meaning is unambiguous.
 
 | Event | Description | Detection |
 |---|---|---|
-| `Player_damaged` | Hit; the health bar decreased. | `health` decreases. Suppressed near a death, since dying drains the bar. |
-| `Health_gained` | Collected a health item. | `health` increases. |
-| `Player_died` | Lost a life. Durational. | `lives` decreases; `onset` is walked back to the frame `health` reached 0 (up to 400 frames earlier) and `duration` runs to the life loss, since `lives` only drops once the death animation and fade have played, 2-6 s after the fact. |
-| `Life_gained` | Gained a life. | `lives` increases. |
-| `Enemy_defeated` | Defeated an enemy. **Untyped.** | `instantScore` increases by one of the documented enemy values: **200** (basic enemies), **300** (mortars, machineguns), **400** (cauldron-heads), **500** (anti-riot cop, hovering ninja). |
-| `Projectile_appeared/Shuriken` | Threw a shuriken. | `shurikens` decreases by exactly 1. |
-| `Item_collected/Shurikens` | Picked up shurikens. | `shurikens` increases. The amount is not carried on the row; it is recoverable from `shurikens` in the repetition's `_variables.json`. |
-| `Weapon_powerup_started/Ninjutsu{n}` | Used a ninjutsu. | `ninjitsu` decreases; `typeOfNinjitsu` names it. Happens in only 8 of 666 repetitions, and `typeOfNinjitsu` is always 0, so ninjutsu is not tracked as a state. |
-| `Player_state/Hit_recovery` | The game's post-hit counter, during which the player flashes. | Non-zero run of `hit_timer` (**new**, $FF4165 -- the byte at raw offset $FF4164 of the word-swapped work RAM) that begins within 3 frames of a `Player_damaged`: 80 or 64 → 0, one per frame. Runs from 48 (knock-backs costing no health) and the 25-frame idles at 1 are ignored. Cut where `health` reaches 0. |
-| `Player_state/Normal` | Shinobi's single form; present so that every dataset has a form for every frame of play. | One row per stretch of frames on which the player is alive (outside `Screen/Death` and `Screen/Game_over`). The temporary weapon upgrade is not tracked. |
-| `Level_started` | A gameplay attempt began. | Frame 0. |
-| `Level_completed` | Finished the level. | The start of the end-of-level fade that closes the recording: the last `blackScreen` stretch of the repetition holds **22** or **62** (see Screens above). Over the corpus this is present in 519 of 536 cleared repetitions and in none of the 130 failed ones; the 17 misses are recordings that stopped inside the last enemy wave, before the fade. |
+| `PlayerDamaged` | Hit; the health bar decreased. | `health` decreases. Suppressed near a death, since dying drains the bar. |
+| `HealthGained` | Collected a health item. | `health` increases. |
+| `PlayerDied` | Lost a life. Durational. | `lives` decreases; `onset` is walked back to the frame `health` reached 0 (up to 400 frames earlier) and `duration` runs to the life loss, since `lives` only drops once the death animation and fade have played, 2-6 s after the fact. |
+| `LifeGained` | Gained a life. | `lives` increases. |
+| `EnemyDefeated` | Defeated an enemy. **Untyped.** | `instantScore` increases by one of the documented enemy values: **200** (basic enemies), **300** (mortars, machineguns), **400** (cauldron-heads), **500** (anti-riot cop, hovering ninja). |
+| `ProjectileAppeared/Shuriken` | Threw a shuriken. | `shurikens` decreases by exactly 1. |
+| `ItemCollected/Shurikens` | Picked up shurikens. | `shurikens` increases. The amount is not carried on the row; it is recoverable from `shurikens` in the repetition's `_variables.json`. |
+| `WeaponPowerupStarted/Ninjutsu{n}` | Used a ninjutsu. | `ninjitsu` decreases; `typeOfNinjitsu` names it. Happens in only 8 of 666 repetitions, and `typeOfNinjitsu` is always 0, so ninjutsu is not tracked as a state. |
+| `PlayerState/HitRecovery` | The game's post-hit counter, during which the player flashes. | Non-zero run of `hit_timer` (**new**, $FF4165 -- the byte at raw offset $FF4164 of the word-swapped work RAM) that begins within 3 frames of a `PlayerDamaged`: 80 or 64 → 0, one per frame. Runs from 48 (knock-backs costing no health) and the 25-frame idles at 1 are ignored. Cut where `health` reaches 0. |
+| `PlayerState/Normal` | Shinobi's single form; present so that every dataset has a form for every frame of play. | One row per stretch of frames on which the player is alive (outside `Screen/Death` and `Screen/GameOver`). The temporary weapon upgrade is not tracked. |
+| `LevelStarted` | A gameplay attempt began. | Frame 0. |
+| `LevelCompleted` | Finished the level. | The start of the end-of-level fade that closes the recording: the last `blackScreen` stretch of the repetition holds **22** or **62** (see Screens above). Over the corpus this is present in 519 of 536 cleared repetitions and in none of the 130 failed ones; the 17 misses are recordings that stopped inside the last enemy wave, before the fade. |
 
 ### Known limitations
 
-- **No `Enemy_on_screen` / `Enemy_counter`.** Nothing in the
+- **No `EnemyOnScreen` / `Enemy_counter`.** Nothing in the
   available RAM map locates enemy objects.
-- **`Enemy_defeated` is untyped**, and only the four documented score values are counted.
+- **`EnemyDefeated` is untyped**, and only the four documented score values are counted.
   Other increments occur — 1000 is common, and 250/350/700/3000/5000 appear — but nothing
   available attributes them, so they are deliberately not counted rather than guessed at.
   Roughly a third of scoring events are therefore not represented. (The previous pipeline
   counted only 200 and 300, silently dropping the 400- and 500-point kills its own
   docstring listed.)
-- **`Level_completed` depends on the recording reaching the fade.** The previous pipeline
+- **`LevelCompleted` depends on the recording reaching the fade.** The previous pipeline
   fabricated one five seconds before the end of any repetition in which no life was lost
   — a property of the whole repetition rather than a moment in time. An earlier release
   of this module then dropped the event, having found `blackScreen` set in every
   repetition; it is, but that value (40) is the scroll lock of an enemy wave, and the
-  *trailing* fade value discriminates perfectly (see the `Level_completed` row above).
+  *trailing* fade value discriminates perfectly (see the `LevelCompleted` row above).
   17 cleared repetitions whose recording stopped inside the last enemy wave get no event;
   their `_summary.json` `Outcome` still says `cleared`.
-- `Player_died` and `Life_gained` are **new**: the previous pipeline had no player-death
+- `PlayerDied` and `LifeGained` are **new**: the previous pipeline had no player-death
   event at all, despite `lives` recording it unambiguously.
 
 ---

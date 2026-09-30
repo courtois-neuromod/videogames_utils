@@ -22,7 +22,7 @@ from ..spans import clip, constant_runs, nonzero_runs
 #: Enemy_State / sprite_state values that mark a defeat, and how it was achieved.
 KILL_STATES = {4: "Stomp", 34: "Projectile", 132: "Shell"}
 
-#: PlayerStatus values and the Player_state form row each gets.
+#: PlayerStatus values and the PlayerState form row each gets.
 FORM_NAMES = {0: "Small", 1: "Super", 2: "Fire"}
 
 #: GameEngineSubroutine ($000E) values, from SMBDIS.ASM's dispatch table. This is the
@@ -293,7 +293,7 @@ def _name(type_id: int) -> str:
     """
     if type_id in ram.SMB1_BULLET_IDS:
         return "BulletBill"
-    return ram.SMB1_ENEMY_IDS.get(type_id, f"Unknown_0x{type_id:02X}")
+    return ram.SMB1_ENEMY_IDS.get(type_id, f"Unknown0x{type_id:02X}")
 
 
 def _transitions(series, predicate) -> List[int]:
@@ -424,7 +424,7 @@ def _fall_onset(d: "_Vars", port: Port, reset_frame: int) -> int:
 
 
 def _enemy_events(acc: EventAccumulator, d: _Vars, port: Port) -> None:
-    """Enemy_on_screen / Enemy_defeated / Enemy_counter."""
+    """EnemyOnScreen / EnemyDefeated / Enemy_counter."""
     tracks = tracking.find_tracks(
         d.n, port.n_slots, d.visible, lambda s, f: d.types[s][f],
         keep=lambda tid: tid not in ram.SMB1_NON_ENEMY_IDS)
@@ -437,7 +437,7 @@ def _enemy_events(acc: EventAccumulator, d: _Vars, port: Port) -> None:
 
     # Attribute each defeat to the visible track it belongs to, at most one per track.
     # Without this a single enemy whose kill state is re-entered (a shell struck twice,
-    # say) produced several Enemy_defeated rows, which is how "more endings than
+    # say) produced several EnemyDefeated rows, which is how "more endings than
     # appearances" showed up in validation.
     defeats = _defeat_frames(d, port)
     claimed = set()
@@ -453,28 +453,28 @@ def _enemy_events(acc: EventAccumulator, d: _Vars, port: Port) -> None:
 
     for track in tracks:
         name = _name(track.type_id)
-        acc.add(f"Enemy_on_screen/{name}", track.frame_start, track.frame_stop)
+        acc.add(f"EnemyOnScreen/{name}", track.frame_start, track.frame_stop)
         if track.ended_defeated:
             frame, method = track.defeat
-            acc.add(f"Enemy_defeated/{method}/{name}", frame)
+            acc.add(f"EnemyDefeated/{method}/{name}", frame)
 
     # Defeats that belong to no visible track are enemies killed off screen -- typically
     # a kicked shell rolling on out of view. They are real (the score goes up), so they
-    # are kept, but they have no Enemy_on_screen partner.
+    # are kept, but they have no EnemyOnScreen partner.
     for index, (slot, frame, method) in enumerate(defeats):
         if index in claimed:
             continue
         type_id = d.types[slot][frame]
         if type_id in ram.SMB1_NON_ENEMY_IDS:
             continue
-        acc.add(f"Enemy_defeated/{method}/{_name(type_id)}", frame)
+        acc.add(f"EnemyDefeated/{method}/{_name(type_id)}", frame)
 
     # Projectiles occupying enemy slots (Bowser flames; Bullet Bills are enemies).
     proj = tracking.find_tracks(
         d.n, port.n_slots, d.visible, lambda s, f: d.types[s][f],
         min_frames=2, keep=lambda tid: tid in ram.SMB1_PROJECTILE_IDS)
     for track in proj:
-        acc.add(f"Projectile_on_screen/{_name(track.type_id)}",
+        acc.add(f"ProjectileOnScreen/{_name(track.type_id)}",
                 track.frame_start, track.frame_stop)
 
 
@@ -490,7 +490,7 @@ def _defeat_frames(d: _Vars, port: Port) -> List[tuple]:
        bounding box off screen (``MoveBoundBoxOffscreen``, right after it writes
        ``EnemyOffscrBitsMasked``). Reading the defeat at the end of the animation
        therefore placed it long after the enemy stopped being visible, so it could not be
-       matched to its own Enemy_on_screen track -- which is how validation reported 17 of
+       matched to its own EnemyOnScreen track -- which is how validation reported 17 of
        20 defeats in a w3-1 replay as "off screen".
 
     The number of defeats is unchanged; only their onsets move earlier.
@@ -509,7 +509,7 @@ def _defeat_frames(d: _Vars, port: Port) -> List[tuple]:
 
 
 def _player_events(acc: EventAccumulator, d: _Vars, port: Port) -> None:
-    """Player_damaged, Player_died/*, Life_gained, Player_state/*.
+    """PlayerDamaged, PlayerDied/*, LifeGained, PlayerState/*.
 
     Driven by GameEngineSubroutine rather than by counters: the engine states the player
     action on the frame it begins, whereas `lives` only drops once the death animation
@@ -521,13 +521,13 @@ def _player_events(acc: EventAccumulator, d: _Vars, port: Port) -> None:
 
     # Damage: the engine runs the injury-blink routine.
     for frame in _transitions(engine, lambda v: v == ENGINE_INJURY_BLINK):
-        acc.add("Player_damaged", frame)
+        acc.add("PlayerDamaged", frame)
 
     # Deaths: the engine runs the death routine. Classified by cause below.
     death_frames = _transitions(engine, lambda v: v == ENGINE_DEATH)
     death_onsets = list(death_frames)
     for frame in death_frames:
-        acc.add(f"Player_died/{_death_cause(d, port, frame, timer, engine)}", frame)
+        acc.add(f"PlayerDied/{_death_cause(d, port, frame, timer, engine)}", frame)
 
     # Falls do not run the death routine -- the player simply drops off the screen and
     # the engine goes straight to losing a life. Catch those separately, ignoring the
@@ -537,7 +537,7 @@ def _player_events(acc: EventAccumulator, d: _Vars, port: Port) -> None:
         if any(0 <= frame - df <= 400 for df in death_frames):
             continue
         onset = _fall_onset(d, port, frame)
-        acc.add("Player_died/Fall", onset, frame)
+        acc.add("PlayerDied/Fall", onset, frame)
         death_onsets.append(onset)
         falls.append((onset, frame))
 
@@ -548,7 +548,7 @@ def _player_events(acc: EventAccumulator, d: _Vars, port: Port) -> None:
     # Extra lives. The counter can also wrap when coins hit 100, which is a 1-up too.
     for frame in range(1, d.n):
         if lives[frame] > lives[frame - 1]:
-            acc.add("Life_gained", frame)
+            acc.add("LifeGained", frame)
 
 
 def _screen_labels(d: _Vars, port: Port, falls: List[tuple]) -> List[str]:
@@ -563,13 +563,13 @@ def _screen_labels(d: _Vars, port: Port, falls: List[tuple]) -> List[str]:
 
     Two things the engine cannot see. A fall leaves it at 8 while the player drops out
     of the level, so the interval from the fall to the life loss is relabelled from the
-    ``Player_died/Fall`` timing. And on the SNES the engine idles at 8 while the title
+    ``PlayerDied/Fall`` timing. And on the SNES the engine idles at 8 while the title
     card is up (the NES resets it to 0 there), so any frame on which OperMode_Task is not
     running the game routines is a transition too.
 
     Finally, a transition block at the start of the repetition or directly after a death
     is the level's title card -- the black "WORLD x-y / Mario x n" screen, ~2 s -- and is
-    labelled Level_intro. The 24-frame black screen between areas and the pipe / vine
+    labelled LevelIntro. The 24-frame black screen between areas and the pipe / vine
     animations around it stay Transition.
     """
     engine = d.scalar(port.engine_var)
@@ -602,7 +602,7 @@ def _screen_labels(d: _Vars, port: Port, falls: List[tuple]) -> List[str]:
 
 def _state_events(acc: EventAccumulator, d: _Vars, port: Port,
                   death_onsets: List[int], alive: List[bool]) -> None:
-    """Player_state/{Small,Super,Fire,Star,Hit_recovery}: one row per continuous stretch.
+    """PlayerState/{Small,Super,Fire,Star,HitRecovery}: one row per continuous stretch.
 
     The form is read straight from PlayerStatus, which the game writes on the very frame
     the mushroom or flower is collected (the same frame the engine enters 9 / 12) and on
@@ -611,7 +611,7 @@ def _state_events(acc: EventAccumulator, d: _Vars, port: Port,
     labels): they are cut at a death, since the game leaves the status set through the
     death animation and only resets it on the restart, but Mario is not Super while dead;
     and Small resumes only once the title card has gone and play restarts. Star and
-    Hit_recovery are the non-zero stretches of StarInvincibleTimer and InjuryTimer, cut
+    HitRecovery are the non-zero stretches of StarInvincibleTimer and InjuryTimer, cut
     at a death that falls inside them.
     """
     # A _variables.json predating the variable has no form information at all; a
@@ -621,15 +621,15 @@ def _state_events(acc: EventAccumulator, d: _Vars, port: Port,
             name = FORM_NAMES.get(value)
             if name is None:
                 continue
-            acc.add(f"Player_state/{name}", start, stop)
+            acc.add(f"PlayerState/{name}", start, stop)
 
     for var, name in ((port.star_timer_var, "Star"),
-                      (port.injury_timer_var, "Hit_recovery")):
+                      (port.injury_timer_var, "HitRecovery")):
         series = d.v.get(var)
         if not series:
             continue  # _variables.json predating the variable
         for start, stop, _ in nonzero_runs(series, split_on_value_change=False):
-            acc.add(f"Player_state/{name}", start, clip(start, stop, death_onsets))
+            acc.add(f"PlayerState/{name}", start, clip(start, stop, death_onsets))
 
 
 def _death_cause(d: _Vars, port: Port, frame: int, timer, engine) -> str:
@@ -649,8 +649,8 @@ def _death_cause(d: _Vars, port: Port, frame: int, timer, engine) -> str:
 
 
 def _item_events(acc: EventAccumulator, d: _Vars, port: Port) -> None:
-    """Item_collected/Coin, Item_on_screen/*, Block_smashed."""
-    # Block_smashed. Breaking a brick scores 50 points, which the BCD score field holds
+    """ItemCollected/Coin, ItemOnScreen/*, BlockSmashed."""
+    # BlockSmashed. Breaking a brick scores 50 points, which the BCD score field holds
     # as 5. The same +5 increment also appears once the level is over, when the remaining
     # time is converted to score at 50 points per unit, so scoring stops at the end of
     # the level. Requiring the player to be airborne removes the rest: a brick can only
@@ -665,14 +665,14 @@ def _item_events(acc: EventAccumulator, d: _Vars, port: Port) -> None:
             continue
         if airborne is not None and airborne[frame - 1] not in (1, 2):
             continue
-        acc.add("Block_smashed", frame)
+        acc.add("BlockSmashed", frame)
 
     coins = d.scalar(port.coins_var)
     for frame in range(1, d.n):
         delta = coins[frame] - coins[frame - 1]
         # The counter wraps at 100 (and awards a life), so a wrap is still a collection.
         if delta > 0 or delta <= -99:
-            acc.add("Item_collected/Coin", frame)
+            acc.add("ItemCollected/Coin", frame)
 
     # Power-up items live in the last enemy slot on the NES; on the SNES they have their
     # own entity type variable.
@@ -682,24 +682,24 @@ def _item_events(acc: EventAccumulator, d: _Vars, port: Port) -> None:
     for track in item_tracks:
         name = _name(track.type_id)
         if track.type_id == 0x2E:  # PowerUpObject
-            acc.add("Item_on_screen/Powerup", track.frame_start, track.frame_stop)
+            acc.add("ItemOnScreen/Powerup", track.frame_start, track.frame_stop)
         elif track.type_id in (0x30, 0x31):
-            continue  # handled as Flagpole_visible / Castle_visible
+            continue  # handled as FlagpoleVisible / CastleVisible
         else:
-            acc.add(f"Item_on_screen/{name}", track.frame_start, track.frame_stop)
+            acc.add(f"ItemOnScreen/{name}", track.frame_start, track.frame_stop)
 
 
 # ---------------------------------------------------------------- environment events
 
 
 def _environment_events(acc: EventAccumulator, d: _Vars, port: Port) -> None:
-    """Pipe_entered, Checkpoint_reached, Flagpole_visible, Castle_visible,
-    Timer_warning_started."""
+    """PipeEntered, CheckpointReached, FlagpoleVisible, CastleVisible,
+    TimerWarningStarted."""
     engine = d.scalar(port.engine_var)
     for frame in _transitions(engine, lambda v: v in PIPE_STATES):
-        acc.add("Pipe_entered", frame)
+        acc.add("PipeEntered", frame)
 
-    # Checkpoint_reached is deliberately NOT emitted for SMB1. Its only candidate
+    # CheckpointReached is deliberately NOT emitted for SMB1. Its only candidate
     # signal, HalfwayPage ($075B), is written when the player dies past the midpoint in
     # order to place the respawn -- not when the midpoint is crossed. Verified on a w1-1
     # replay where it is non-zero only during the two death/respawn sequences. Emitting
@@ -714,7 +714,7 @@ def _environment_events(acc: EventAccumulator, d: _Vars, port: Port) -> None:
     for track in tracking.find_tracks(
             d.n, port.n_slots, scenery_visible, lambda s, f: d.types[s][f], min_frames=2,
             keep=lambda tid: tid in (0x30, 0x31)):
-        label = "Flagpole_visible" if track.type_id == 0x30 else "Castle_visible"
+        label = "FlagpoleVisible" if track.type_id == 0x30 else "CastleVisible"
         acc.add(label, track.frame_start)
 
     # Timer warning. On the NES the game announces it itself via the music queue, which
@@ -724,13 +724,13 @@ def _environment_events(acc: EventAccumulator, d: _Vars, port: Port) -> None:
     if port.music_var:
         for frame in _transitions(d.scalar(port.music_var),
                                   lambda v: v & MUSIC_TIME_RUNNING_OUT):
-            acc.add("Timer_warning_started", frame)
+            acc.add("TimerWarningStarted", frame)
     else:
         timer = d.scalar(port.timer_var)
         for frame in range(1, d.n):
             if (timer[frame - 1] > TIMER_WARNING_VALUE >= timer[frame]
                     and engine[frame] == ENGINE_NORMAL_PLAY):
-                acc.add("Timer_warning_started", frame)
+                acc.add("TimerWarningStarted", frame)
                 break
 
 
@@ -739,8 +739,8 @@ def _environment_events(acc: EventAccumulator, d: _Vars, port: Port) -> None:
 
 def _level_events(acc: EventAccumulator, d: _Vars, port: Port,
                   outcome: Optional[str]) -> None:
-    """Level_started, Level_completed, Level_exited/Warp."""
-    acc.add("Level_started", 0)
+    """LevelStarted, LevelCompleted, LevelExited/Warp."""
+    acc.add("LevelStarted", 0)
 
     # PlayerEndLevel is the game's own "level is over, walk to the castle" routine. It
     # fires on castle levels too, where there is no flagpole and the shipped
@@ -750,7 +750,7 @@ def _level_events(acc: EventAccumulator, d: _Vars, port: Port,
     if not ends:
         ends = _transitions(engine, lambda v: v == ENGINE_FLAGPOLE_SLIDE)
     if ends:
-        acc.add("Level_completed", ends[0])
+        acc.add("LevelCompleted", ends[0])
 
     # Warp-zone exit. Finishing a level ALSO advances the world index, so a world change
     # is only a warp when the level never ended -- without this guard the event fired on
@@ -776,4 +776,4 @@ def _level_events(acc: EventAccumulator, d: _Vars, port: Port,
                 warped = frame if warped is None else min(warped, frame)
                 break
     if warped is not None:
-        acc.add("Level_exited/Warp", warped)
+        acc.add("LevelExited/Warp", warped)

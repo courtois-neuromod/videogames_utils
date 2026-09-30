@@ -35,7 +35,7 @@ from .emit import TASK_FRAME_RATES
 DEFAULT_PAD = 2.0
 
 #: Event types whose correctness is a direct counter read and needs only a spot check.
-LOW_RISK_PREFIXES = ("Action", "Item_collected/Coin", "gym-retro_game")
+LOW_RISK_PREFIXES = ("Action", "ItemCollected/Coin", "gym-retro_game")
 
 
 @dataclass

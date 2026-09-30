@@ -1,4 +1,4 @@
-"""Run-length helpers for the durational ``Player_state/*`` events.
+"""Run-length helpers for the durational ``PlayerState/*`` events.
 
 A state row covers one continuous stretch of a RAM signal. Two operations are needed
 everywhere: finding those stretches, and cutting a stretch short at the player's death,

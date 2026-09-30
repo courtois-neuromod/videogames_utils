@@ -4,7 +4,7 @@ Every repetition is partitioned into stretches labelled with one of the constant
 and one durational ``Screen/<label>`` row is emitted per stretch, so exactly one is
 active at any frame. Which RAM signals produce the labels is game-specific and lives in
 each generator; this module only holds the labels, the row emission and the derived
-"alive" mask that the ``Player_state`` form rows are restricted to.
+"alive" mask that the ``PlayerState`` form rows are restricted to.
 """
 
 from __future__ import annotations
@@ -17,17 +17,17 @@ from .spans import constant_runs
 #: The player controls the character in the level.
 GAMEPLAY = "Gameplay"
 #: The level's title card (SMB1's black "WORLD x-y / Mario x n" screen).
-LEVEL_INTRO = "Level_intro"
+LEVEL_INTRO = "LevelIntro"
 #: The death sequence, from the death (or the drop off screen) to the end of the
 #: animation and the freeze that follows it.
 DEATH = "Death"
 #: The end-of-level sequence after the level is completed.
-LEVEL_END = "Level_end"
+LEVEL_END = "LevelEnd"
 #: A transition inside a level with no player control: pipe / vine / door travel and the
 #: black or fading screen while a new area loads.
 TRANSITION = "Transition"
 #: The GAME OVER screen after the last life is lost.
-GAME_OVER = "Game_over"
+GAME_OVER = "GameOver"
 #: The world map (SMB3), when a recording runs on past the level.
 MAP = "Map"
 
@@ -48,5 +48,5 @@ def emit(acc: EventAccumulator, labels: Sequence[str]) -> None:
 
 
 def alive_mask(labels: Sequence[str]) -> List[bool]:
-    """True on frames where a ``Player_state`` form row may exist."""
+    """True on frames where a ``PlayerState`` form row may exist."""
     return [label not in NOT_ALIVE for label in labels]
