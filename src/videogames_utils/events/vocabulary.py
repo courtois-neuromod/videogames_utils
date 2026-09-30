@@ -434,7 +434,9 @@ COLUMN_DESCRIPTIONS: Dict[str, dict] = {
                                  "gym-retro_game row only; every other event falls inside "
                                  "exactly one of those windows. Per-repetition metadata "
                                  "(phase, IndexInRun, IndexGlobal, IndexLevel, Outcome) "
-                                 "lives in the matching gamelogs/*_summary.json."},
+                                 "lives in the matching gamelogs/*_summary.json. "
+                                 "'Missing file' marks a repetition whose .bk2 was "
+                                 "lost; its row is kept, with no events inside it."},
 }
 
 

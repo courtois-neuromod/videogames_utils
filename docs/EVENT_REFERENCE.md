@@ -44,8 +44,8 @@ old spelling among its former names.
 | `onset` | Seconds from the start of the fMRI run. |
 | `duration` | Seconds; 0 for point events. |
 | `frame_start`, `frame_stop` | Emulator frames, relative to the repetition. |
-| `button` | Raw controller button behind an `Action/*` event; empty otherwise. |
-| `stim_file` | Path to the `.bk2`. **Set on the `gym-retro_game` row only** — every other event sits inside exactly one of those windows. |
+| `button` | Raw controller button behind an `Action/*` event; `n/a` otherwise. |
+| `stim_file` | Path to the `.bk2`. **Set on the `gym-retro_game` row only** — every other event sits inside exactly one of those windows. A repetition whose `.bk2` was lost keeps its row, with `stim_file` = `Missing file`, the onset (and, where the task logged it, the duration) from the plain `_events.tsv`, `n/a` frames and no events inside it. |
 
 Per-repetition metadata — `phase`, `IndexInRun`, `IndexGlobal`, `IndexLevel` and
 `Outcome` — is **not** repeated on event rows. It lives in the repetition's

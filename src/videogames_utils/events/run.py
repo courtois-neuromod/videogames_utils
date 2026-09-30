@@ -30,6 +30,27 @@ GENERATORS = {
 _REP_RE = re.compile(r"rep-(\d+)")
 
 
+#: stim_file value of a repetition whose .bk2 was lost.
+MISSING_FILE = "Missing file"
+
+
+def _level_from_events(level, task: str):
+    """Convert a plain events.tsv level to the annotated form, e.g. Level1-1 -> w1l1.
+
+    Only needed for "Missing file" repetitions: the others take their level from the
+    replay's _variables.json.
+    """
+    if not isinstance(level, str):
+        return level
+    if task == "shinobi":  # "4-1" -> "4"
+        return level.split("-")[0]
+    if task == "mario3":  # "1Player.World1.Level5" -> "w1l5", "...World6.Airship" -> "w6lAirship"
+        m = re.fullmatch(r"1Player\.World(\w+)\.(?:Level)?(\w+)", level)
+    else:  # mario, mariostars: "Level1-1" -> "w1l1"
+        m = re.fullmatch(r"Level(\w+)-(\w+)", level)
+    return f"w{m.group(1)}l{m.group(2)}" if m else level
+
+
 def _rep_index(stim_file: str) -> Optional[int]:
     match = _REP_RE.search(op.basename(stim_file))
     return int(match.group(1)) if match else None
@@ -57,8 +78,18 @@ def annotate_run(events_path: str, dataset_dir: str, task: str) -> pd.DataFrame:
     for _, rep in reps.iterrows():
         stim = rep.get("stim_file")
         # The datasets use a "Missing file" sentinel with inconsistent capitalisation
-        # ("Missing File" appears in shinobi), so compare case-insensitively.
+        # ("Missing File" appears in shinobi), so compare case-insensitively. The
+        # repetition was played but its .bk2 was lost: keep its container row, with the
+        # timing the task logged, so the run's timeline stays complete.
         if not isinstance(stim, str) or stim.strip().lower() == "missing file":
+            frames.append(pd.DataFrame([{
+                "onset": float(rep["onset"]),
+                "duration": pd.to_numeric(rep.get("duration"), errors="coerce"),
+                "trial_type": "gym-retro_game",
+                "level": _level_from_events(rep.get("level"), task),
+                "frame_start": pd.NA, "frame_stop": pd.NA,
+                "stim_file": MISSING_FILE,
+            }]))
             continue
         var_path = op.join(dataset_dir, stim).replace(".bk2", "_variables.json")
         if not op.exists(var_path):
@@ -163,7 +194,7 @@ def annotate_dataset(dataset_dir: str, task: str, output_dir: Optional[str] = No
                     print(f"  no replays available: {name}")
                 continue
             os.makedirs(op.dirname(out_path), exist_ok=True)
-            annotated.to_csv(out_path, sep="\t", index=False)
+            annotated.to_csv(out_path, sep="\t", index=False, na_rep="n/a")
             stats["written"] += 1
             if verbose:
                 print(f"  wrote {out_path} ({len(annotated)} events)")
