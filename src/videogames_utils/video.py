@@ -1,4 +1,3 @@
-import itertools
 import logging
 import os
 import subprocess
@@ -50,12 +49,13 @@ def make_mp4(
     Frames are piped to ffmpeg directly rather than through moviepy, which rounds the
     frame rate to two decimals and resamples frames by timestamp, silently dropping the
     last one. Here every frame is written once, at the exact (rational) rate.
+    The audio is resampled to span exactly the same duration as the frames.
     """
-    frames = iter(selected_frames)
-    first = next(frames, None)
-    if first is None:
+    frames = list(selected_frames)
+    if not frames:
         logging.warning(f"No frames to save in {movie_fname}")
         return
+    first = frames[0]
     height, width = first.shape[:2]
     rate = Fraction(fps).limit_denominator(1_000_000)
 
@@ -71,13 +71,20 @@ def make_mp4(
             if audio.dtype != np.int16:
                 logging.info("Casting audio to int16 before saving")
                 audio = audio.astype(np.int16)
-            write_wav(audio, sample_rate, str(temp_audio))
+            # Declare the rate at which the samples span exactly the video. The emulator
+            # cores do not emit exactly sample_rate / fps samples per frame (the NES core
+            # runs ~0.024% long), so at the nominal rate the track outlasts the video.
+            fitted_rate = round(len(audio) * fps / len(frames))
+            if abs(fitted_rate / sample_rate - 1) > 0.005:
+                logging.warning(f"Audio of {movie_fname} is {len(audio) / sample_rate:.3f} s "
+                                f"for {len(frames) / fps:.3f} s of video; fitting it anyway")
+            write_wav(audio, fitted_rate, str(temp_audio))
             cmd += ["-i", str(temp_audio), "-c:a", "aac", "-ar", "44100"]
         cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", str(movie_fname)]
 
         proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
-            for frame in itertools.chain([first], frames):
+            for frame in frames:
                 proc.stdin.write(np.ascontiguousarray(frame[..., :3], dtype=np.uint8).tobytes())
         except BrokenPipeError:
             pass  # ffmpeg exited early; its stderr is reported below
