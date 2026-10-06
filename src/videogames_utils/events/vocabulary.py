@@ -60,23 +60,20 @@ VOCABULARY: List[EventType] = [
               "health (Shinobi).",
               ALL, former=("Hit/powerup_lost", "HealthLoss")),
     EventType("PlayerDied/Enemy",
-              "The player dies after being hit by an enemy or another damaging object.",
-              MARIOS, former=("Hit/life_lost", "Hit/killed")),
+              "The player dies after being hit by an enemy or another damaging object. "
+              "In Shinobi, the hit that empties the health bar.",
+              ALL, former=("Hit/life_lost", "Hit/killed")),
     EventType("PlayerDied/Fall",
               "The player falls into a pit and dies. `onset` is the frame the player "
               "drops below the bottom of the screen and `duration` runs to the frame "
               "the life is actually lost, about 4 s later -- the game lets the player "
-              "fall out of the level before resetting.",
-              MARIOS, former=("Hit/fall",), durational=True),
+              "fall out of the level before resetting. In Shinobi, a fall into a pit or "
+              "into water; `onset` is the frame the player reaches the bottom of the "
+              "screen.",
+              ALL, former=("Hit/fall",), durational=True),
     EventType("PlayerDied/Timeout",
               "The player dies because the level timer ran out.",
               MARIOS, former=("Hit/timeout",)),
-    EventType("PlayerDied",
-              "The player loses all health or dies from an environmental hazard. "
-              "`onset` is the frame health reaches zero and `duration` runs to the frame "
-              "the life is actually lost, 2-6 s later, once the death animation and the "
-              "fade have played.",
-              ("shinobi",), durational=True),
     EventType("LifeGained", "The player collects or earns an extra life.", ALL),
     EventType("HealthGained",
               "The player collects a health item and the health bar increases.",
@@ -374,6 +371,11 @@ RETIRED: Dict[str, str] = {
         "`onset + duration` of that row -- verified on 6620 of 6620 rows, matching on "
         "integer frames. Read it as an EnemyOnScreen row with no EnemyDefeated at "
         "its end.",
+    "PlayerDied":
+        "Shinobi only, untyped. Replaced by PlayerDied/Enemy and PlayerDied/Fall, read "
+        "from the death state of the player's animation byte. The onset is unchanged; "
+        "an enemy death is now a point event, and 4 deaths at the end of a recording "
+        "that the old row missed are now present.",
 }
 
 #: Former trial_type -> new trial_type. Templated targets keep their placeholder, since

@@ -80,6 +80,7 @@ NOT_EMITTED: Dict[str, Dict[str, str]] = {
                                      "sidecars replayed with the current `data.json`",
         "WeaponPowerupExpired/{powerup_type}": "not implemented (no RAM signal for the "
                                                  "weapon upgrade)",
+        "PlayerDied/Timeout": "Shinobi III has no level timer",
         "Action/Other": "never pressed",
         "Action/Start": "never pressed",
         "Action/Select": "never pressed",
@@ -191,12 +192,18 @@ background/palette scratch with no gameplay meaning.
   reaches 0 is the death animation, 21 the life loss and the fade back in; 21 with lives
   negative is the GAME OVER screen; and a fade of 22 or 62 running to the end of the
   recording is the end of a completed level (the ROUND CLEAR tally on level 1). That
-  trailing fade is present in 519 of 536 cleared repetitions and in none of the 130
-  failed ones; the 17 misses are recordings that stopped inside the last enemy wave. All
+  trailing fade is present in 519 of 532 cleared repetitions and in none of the 134
+  failed ones; the 13 misses are recordings that stopped inside the last enemy wave. All
   checked on rendered frames.
-- `PlayerDied` is durational: `lives` only drops 2-6 s after the fact, once the death
-  animation and fade have played, so `onset` is the frame health reached 0 and
-  `duration` runs to the life loss.
+- `PlayerDied/Enemy` and `PlayerDied/Fall` come from the player's animation state
+  (`status`, $FF415A), which enters 41 (health drained by enemies) or 43 (a fall into a
+  pit or water) on the frame health reaches 0, and takes neither value at any other
+  time; checked on rendered frames for all 144 deaths. `onset` is that frame. As in the
+  Mario games, `Enemy` is a point event and `Fall` runs to the life loss -- `lives` only
+  drops 2-6 s later, once the animation and fade have played -- or to the end of the
+  recording when it stops first (4 falls). The game has no level timer, so there is no
+  `PlayerDied/Timeout`, and no other death occurs in levels 1, 4 and 5.
+- The drop of health to 0 that starts a death is not a `PlayerDamaged`.
 - `PlayerState/Normal` exists so that every dataset has a form for every frame of play;
   Shinobi has no forms. The temporary weapon upgrade is not tracked, and
   `WeaponPowerupStarted/Ninjutsu` marks a ninjutsu cast (8 repetitions), not a weapon

@@ -22,13 +22,18 @@ level ending and on nothing else.
 position, and fell through to ``failed/killed`` as a catch-all -- which is why 91% of
 mario3 repetitions carry that label. ``Player_IsDying`` ($00F1) states the cause outright.
 
-**shinobi.** Unchanged in substance: with no RAM map there is still no signal beyond
-"did the player lose a life", which is what the shipped code used.
+**shinobi.** The shipped logic only asked "did the player lose a life" and wrote
+``failed`` with no cause, and it missed deaths whose recording stopped before ``lives``
+dropped. The player's animation state (``status``, $FF415A) enters a dedicated value on
+the frame of every death, 41 for health drained by enemies and 43 for a fall, so the
+cause of the final death is now stated as for the Mario games.
 """
 
 from __future__ import annotations
 
 from typing import Optional, Sequence
+
+from .generators.shinobi3 import DEATH_CAUSES as SHINOBI_DEATH_STATES
 
 #: GameEngineSubroutine / player_action_state values (shared by SMB1 on NES and SNES).
 ENGINE_FLAGPOLE_SLIDE = 4
@@ -182,14 +187,18 @@ def smb3_outcome(repvars: dict) -> str:
 def shinobi_outcome(repvars: dict) -> str:
     """Outcome for Shinobi III.
 
-    Unchanged from the shipped behaviour: with no RAM map for this game the only
-    available signal is whether a life was lost. Note this makes ``cleared`` a statement
-    about survival, not about reaching the end of the stage.
+    ``failed/killed`` or ``failed/fall`` from the death state ``status`` entered last
+    (see :data:`..generators.shinobi3.DEATH_CAUSES`), ``cleared`` if it never entered
+    one. As before, ``cleared`` is a statement about survival, not about reaching the
+    end of the stage.
     """
     try:
-        lives = repvars["lives"]
-        lost = any(lives[i] < lives[i - 1] for i in range(1, len(lives)))
-        return "failed" if lost else "cleared"
+        status = repvars["status"]
+        causes = [SHINOBI_DEATH_STATES[v] for i, v in enumerate(status)
+                  if v in SHINOBI_DEATH_STATES and (i == 0 or status[i - 1] != v)]
+        if not causes:
+            return "cleared"
+        return "failed/killed" if causes[-1] == "Enemy" else "failed/fall"
     except (KeyError, IndexError, TypeError):
         return "unknown"
 
