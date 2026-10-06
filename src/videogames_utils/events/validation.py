@@ -28,6 +28,7 @@ import pandas as pd
 
 from . import vocabulary
 from .emit import COLUMNS, TASK_FRAME_RATES
+from .generators.shinobi3 import DEATH_CAUSES as SHINOBI_DEATH_STATES
 
 #: Columns every annotated events file must have.
 REQUIRED_COLUMNS = ["trial_type", "onset", "duration", "level", "frame_start",
@@ -253,11 +254,19 @@ def check_invariants(events: pd.DataFrame, repvars: dict, task: str, summary: di
 
     # --- deaths ------------------------------------------------------------------
     deaths = prefix_count("PlayerDied")
-    if task == "shinobi" and "lives" in repvars:
-        expected = _diff_decreases(repvars["lives"])
+    if task == "shinobi" and "status" in repvars:
+        # Every life loss is preceded by a death state; a death state may have no life
+        # loss when the recording stops during the death animation.
+        status = repvars["status"]
+        expected = sum(1 for i, v in enumerate(status)
+                       if v in SHINOBI_DEATH_STATES and (i == 0 or status[i - 1] != v))
         if expected != deaths:
-            report.add("V1", "death count disagrees with the lives counter", path,
-                       f"counter says {expected}, events say {deaths}")
+            report.add("V1", "death count disagrees with the status death states", path,
+                       f"status says {expected}, events say {deaths}")
+        if "lives" in repvars and _diff_decreases(repvars["lives"]) > deaths:
+            report.add("V1", "more lives lost than deaths", path,
+                       f"lives drops {_diff_decreases(repvars['lives'])} times, "
+                       f"{deaths} PlayerDied events")
     elif task == "mario3":
         # One .bk2 is one life, so a failed repetition has exactly one death.
         outcome = (summary or {}).get("Outcome", "")
@@ -276,11 +285,11 @@ def check_invariants(events: pd.DataFrame, repvars: dict, task: str, summary: di
     warped = counts.get("LevelExited/Warp", 0)
     if outcome and task == "shinobi":
         # Completion is read from the end-of-level fade, which the recording sometimes
-        # stops short of (17 of 536 cleared repetitions), so a miss is only a warning.
+        # stops short of (13 of 532 cleared repetitions), so a miss is only a warning.
         if outcome == "cleared" and not completed:
             report.add("V1", "cleared repetition without LevelCompleted", path,
                        "recording stopped before the end-of-level fade", "warning")
-        if outcome == "failed" and completed:
+        if outcome.startswith("failed") and completed:
             report.add("V1", "failed repetition with LevelCompleted", path,
                        f"outcome={outcome}, {completed} events")
     elif outcome:

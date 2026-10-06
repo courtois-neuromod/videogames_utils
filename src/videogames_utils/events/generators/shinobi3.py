@@ -12,6 +12,8 @@ What that costs, explicitly:
   documented enemy values are counted; see :data:`KILL_SCORE_VALUES`.
 * There are no ``Enemy_appeared`` / ``Enemy_disappeared`` / ``Enemy_counter`` events,
   because nothing in the current RAM map locates enemy objects.
+* ``PlayerDied`` distinguishes only ``Enemy`` and ``Fall``, the two death states of the
+  player's animation byte; see :data:`DEATH_CAUSES`.
 * ``LevelCompleted`` is read from the end-of-level fade that closes the recording, so
   it is missed in the few cleared repetitions whose recording stopped before the fade.
   See :func:`_screen_labels`.
@@ -22,7 +24,7 @@ Everything this module does emit is derived from a counter whose meaning is unam
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from .. import screens
 from ..emit import EventAccumulator, TASK_FRAME_RATES
@@ -63,8 +65,20 @@ KILL_SCORE_VALUES = frozenset({200, 300, 400, 500})
 SCREEN_SCROLL_LOCK = 40
 SCREEN_LEVEL_END_VALUES = (22, 62)
 
-#: Frames to search back from a life loss for the moment health reached zero.
-DEATH_SEARCH_FRAMES = 400
+#: Values the player's animation state (``status``, $FF415A) takes for the death
+#: sequence, and the cause each one means. ``status`` switches to one of them on the very
+#: frame ``health`` reaches 0 and holds it until the life is lost, and it takes neither
+#: value at any other time. Over the corpus (666 replays, 144 deaths), confirmed on the
+#: rendered frames:
+#:
+#:   41  health drained by enemy hits: the player collapses in the play area (97-208 px
+#:       from the top of the screen), 1-3 health left before the last hit. 18 deaths.
+#:   43  fell into a pit or into water: the player is at the bottom edge of the screen
+#:       (369-381 px) and the health bar is wiped in one frame, usually from full. 126
+#:       deaths.
+#:
+#: No other death occurs in levels 1, 4 and 5, and the game has no level timer.
+DEATH_CAUSES = {41: "Enemy", 43: "Fall"}
 
 #: Genesis controller mapping for Shinobi III. B attacks, C jumps, A casts ninjutsu --
 #: the same assignment the shipped generator uses.
@@ -98,8 +112,9 @@ def generate(repvars: dict, level=None, outcome: Optional[str] = None, **default
 
     _actions(acc, repvars)
     _level_events(acc, n)
-    death_frames = _player_events(acc, col, n)
-    labels = _screen_labels(col, n, death_frames)
+    deaths = _deaths(col, n)
+    _player_events(acc, col, n, deaths)
+    labels = _screen_labels(col, n, deaths)
     screens.emit(acc, labels)
     for start, stop, label in constant_runs(labels):
         if label == screens.LEVEL_END:
@@ -128,25 +143,35 @@ def _actions(acc: EventAccumulator, repvars: dict) -> None:
             acc.add(trial_type, start, len(series) - 1, button=button)
 
 
-def _death_onset(health, frame: int) -> int:
-    """The frame health reached zero before the life loss at ``frame``."""
-    onset = frame
-    while onset > 0 and health[onset - 1] == 0 and frame - onset < DEATH_SEARCH_FRAMES:
-        onset -= 1
-    return onset
+def _deaths(col, n: int) -> List[Tuple[int, int, str]]:
+    """``(onset, stop, cause)`` for each death; see :data:`DEATH_CAUSES`.
+
+    ``onset`` is the frame ``status`` enters a death state, which is the frame health
+    reaches 0. ``stop`` is the frame the life is lost -- ``lives`` only drops once the
+    death animation and fade have played, 2-6 s later -- or the last frame when the
+    recording stops before that (4 deaths in the corpus, all falls), which a death keyed
+    on ``lives`` alone would miss.
+    """
+    status = col("status")
+    lives = col("lives")
+    out = []
+    for onset in _transitions(status, lambda v: v in DEATH_CAUSES):
+        stop = next((f for f in range(onset + 1, n) if lives[f] < lives[f - 1]), n - 1)
+        out.append((onset, stop, DEATH_CAUSES[status[onset]]))
+    return out
 
 
-def _screen_labels(col, n: int, death_frames: List[int]) -> List[str]:
+def _screen_labels(col, n: int, deaths: List[Tuple[int, int, str]]) -> List[str]:
     """One screen label per frame; see :mod:`..screens` and :data:`SCREEN_SCROLL_LOCK`.
 
     Every non-zero stretch of ``blackScreen`` other than the scroll lock is a stretch the
     player does not control, Transition by default. Inside it: from the frame health
-    reached zero to the frame the life is lost is the death sequence; the frames on which
+    reached zero to the frame the life is lost (or the recording stops) is the death
+    sequence; the frames on which
     ``lives`` is negative are the GAME OVER screen; and a fade of value 22 or 62 that runs
     to the end of the recording is the end of a completed level.
     """
     mode = col("blackScreen")
-    health = col("health")
     lives = col("lives")
     labels = [screens.GAMEPLAY] * n
     for start, stop, value in constant_runs([bool(v) and v != SCREEN_SCROLL_LOCK
@@ -154,8 +179,8 @@ def _screen_labels(col, n: int, death_frames: List[int]) -> List[str]:
         if value:
             screens.fill(labels, start, stop, screens.TRANSITION)
 
-    for frame in death_frames:
-        screens.fill(labels, _death_onset(health, frame), frame, screens.DEATH)
+    for onset, stop, _ in deaths:
+        screens.fill(labels, onset, stop, screens.DEATH)
     for frame in range(n):
         if lives[frame] < 0 and labels[frame] == screens.TRANSITION:
             labels[frame] = screens.GAME_OVER
@@ -166,23 +191,21 @@ def _screen_labels(col, n: int, death_frames: List[int]) -> List[str]:
     return labels
 
 
-def _player_events(acc: EventAccumulator, col, n: int) -> List[int]:
-    """PlayerDamaged, HealthGained, PlayerDied, LifeGained, PlayerState/HitRecovery.
-
-    Returns:
-        The frames on which a life was lost.
-    """
+def _player_events(acc: EventAccumulator, col, n: int,
+                   deaths: List[Tuple[int, int, str]]) -> None:
+    """PlayerDamaged, HealthGained, PlayerDied/*, LifeGained, PlayerState/HitRecovery."""
     health = col("health")
     lives = col("lives")
-
-    death_frames = [f for f in range(1, n) if lives[f] < lives[f - 1]]
 
     damaged = []
     for frame in range(1, n):
         delta = health[frame] - health[frame - 1]
         if delta < 0:
-            # A death drains the health bar; that drain is the death, not a separate hit.
-            if any(-60 <= frame - df <= 180 for df in death_frames):
+            # The drop to 0 that starts a death is the death, not a separate hit. (An
+            # earlier release suppressed drops within 180 frames before the life loss,
+            # which misses most falls, whose sequence runs ~350 frames: 118 of 140
+            # deaths also carried a PlayerDamaged.)
+            if any(onset <= frame <= stop for onset, stop, _ in deaths):
                 continue
             acc.add("PlayerDamaged", frame)
             damaged.append(frame)
@@ -202,18 +225,16 @@ def _player_events(acc: EventAccumulator, col, n: int) -> List[int]:
         zero = [f for f in range(start, stop + 1) if health[f] == 0]
         acc.add("PlayerState/HitRecovery", start, clip(start, stop, zero[:1]))
 
-    # The shipped pipeline has no player-death event at all -- this is a real gap, since
-    # `lives` records it unambiguously. `lives` only drops once the death animation has
-    # played, 2-6 s after the fact, so the onset is walked back to the frame health
-    # reached zero and `duration` runs to the life loss (the same treatment as the SMB1
-    # fall death).
-    for frame in death_frames:
-        acc.add("PlayerDied", _death_onset(health, frame), frame)
+    # The shipped pipeline has no player-death event at all. The cause comes from the
+    # death state `status` enters (see DEATH_CAUSES). As in the Mario games, an enemy
+    # death is a point event (the sequence that follows is the Screen/Death row) and a
+    # fall runs from the frame the player hits the bottom of the screen to the life loss.
+    for onset, stop, cause in deaths:
+        acc.add(f"PlayerDied/{cause}", onset, stop if cause == "Fall" else None)
 
     for frame in range(1, n):
         if lives[frame] > lives[frame - 1]:
             acc.add("LifeGained", frame)
-    return death_frames
 
 
 def _combat_events(acc: EventAccumulator, col, n: int) -> None:
@@ -250,8 +271,8 @@ def _level_events(acc: EventAccumulator, n: int) -> None:
     up as a timed event -- and an earlier release of this module dropped it, having found
     that ``blackScreen`` is set in every repetition. It is: the value 40 is the scroll lock
     of an enemy wave. But its *trailing* value discriminates perfectly over the corpus: a
-    fade of 22 or 62 running to the end of the recording occurs in 519 of 536 cleared
-    repetitions and in none of the 130 failed ones (which end in the death value 21 or in
-    play). The 17 misses are cleared repetitions whose recording stopped before the fade.
+    fade of 22 or 62 running to the end of the recording occurs in 519 of 532 cleared
+    repetitions and in none of the 134 failed ones (which end in the death value 21 or in
+    play). The 13 misses are cleared repetitions whose recording stopped before the fade.
     """
     acc.add("LevelStarted", 0)
