@@ -1,9 +1,37 @@
 """Metadata utilities for processing BK2 replay files and creating BIDS-compliant sidecars."""
 
+import csv
 import os
 import os.path as op
 import glob
-from typing import List, Dict, Optional, Any
+import warnings
+from functools import lru_cache
+from typing import List, Dict, Optional, Any, Tuple
+
+
+@lru_cache(maxsize=None)
+def _positions_in_runs(session_dir: str) -> Dict[str, Tuple[str, int]]:
+    """Map each replay of a session to (run, position in run) from its events.tsv files.
+
+    The position counts the ``gym-retro_game`` rows of the run's raw
+    ``func/*_events.tsv`` from 0, in acquisition order. Keys are the ``stim_file``
+    values: paths relative to the dataset root.
+    """
+    positions = {}
+    pattern = op.join(session_dir, "func", "*_run-*_events.tsv")
+    for events_file in sorted(glob.glob(pattern)):
+        name = op.basename(events_file)
+        if "_desc-" in name or not op.exists(events_file):
+            continue
+        run = name.split("_run-")[1].split("_")[0]
+        with open(events_file, newline="") as fh:
+            rows = [r for r in csv.DictReader(fh, delimiter="\t")
+                    if r.get("trial_type") == "gym-retro_game"]
+        for idx, row in enumerate(rows):
+            stim_file = (row.get("stim_file") or "").strip()
+            if stim_file.endswith(".bk2"):
+                positions[op.normpath(stim_file)] = (run, idx)
+    return positions
 
 
 def collect_bk2_files(
@@ -35,15 +63,20 @@ def collect_bk2_files(
         - 'bk2_file': Relative path to BK2 file from data_path
         - 'sub': Subject ID (e.g., '01')
         - 'ses': Session ID (e.g., '001')
-        - 'run': Run number (e.g., '01')
-        - 'bk2_idx': Index of BK2 file within run (0-based)
+        - 'run': Run number (e.g., '01'), or None if unknown
+        - 'bk2_idx': Index of BK2 file within run (0-based), or None if unknown
+
+    When the file name has no ``bk2-`` entity (mario: ``level-w1l1_rep-000``,
+    shinobi: ``run-01_level-1_rep-01``), run and index are read from the session's
+    ``func/*_events.tsv``: the replay's position among the run's ``gym-retro_game``
+    rows. ``rep`` numbers repetitions of a level and is not used for either.
 
     Examples
     --------
     >>> bk2_files = collect_bk2_files('/data/mario', subjects=['sub-01'])
-    >>> print(bk2_files[0])
-    {'bk2_file': 'sub-01/ses-001/beh/sub-01_ses-001_run-01_level-w1l1_bk2-00.bk2',
-     'sub': '01', 'ses': '001', 'run': '01', 'bk2_idx': 0}
+    >>> print(bk2_files[1])
+    {'bk2_file': 'sub-01/ses-001/gamelogs/sub-01_ses-001_task-mario_level-w1l1_rep-001.bk2',
+     'sub': '01', 'ses': '001', 'run': '01', 'bk2_idx': 1}
     """
     # Search in both 'beh' and 'gamelogs' subdirectories
     pattern_beh = op.join(data_path, "sub-*", "ses-*", "beh", "*.bk2")
@@ -83,20 +116,27 @@ def collect_bk2_files(
             continue
 
         # Handle different naming conventions:
-        # - Standard BIDS: run-XX_bk2-YY (run number with bk2 index)
-        # - Mario dataset: rep-XXX (repetition number, no separate run field)
-        if "run" in entities:
-            # Standard BIDS format
-            run = entities["run"]
-            bk2_idx = int(entities.get("bk2", "0"))
-        elif "rep" in entities:
-            # Mario dataset format: rep maps to run, bk2_idx is always 0
-            run = entities["rep"]
-            bk2_idx = 0
+        # - run-XX_bk2-YY: run and position are both in the file name
+        # - otherwise (mario: level-w1l1_rep-000, shinobi: run-01_level-1_rep-01)
+        #   `rep` counts repetitions of a level, not runs or positions in a run, so
+        #   run and position come from the run's events.tsv, where the
+        #   gym-retro_game rows list the replays in the order they were played.
+        position = _positions_in_runs(op.dirname(op.dirname(op.abspath(bk2_path))))
+        if "bk2" in entities:
+            run = entities.get("run")
+            bk2_idx = int(entities["bk2"])
+        elif rel_path in position:
+            run, bk2_idx = position[rel_path]
+            if "run" in entities and entities["run"] != run:
+                warnings.warn(
+                    f"{filename} is listed in the events.tsv of run-{run}",
+                    stacklevel=2,
+                )
         else:
-            # Fallback
-            run = "00"
-            bk2_idx = 0
+            # Not listed in any events.tsv: leave both unset rather than guess, so
+            # that `bk2_idx == 0` (first replay of a run) cannot be true by mistake.
+            run = entities.get("run")
+            bk2_idx = None
 
         bk2_info = {
             "bk2_file": rel_path,
