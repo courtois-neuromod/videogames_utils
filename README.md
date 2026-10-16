@@ -29,8 +29,8 @@ Documentation:
 ## Repetition summaries (`videogames_utils.summary`)
 
 One key scheme for the per-repetition `gamelogs/*_summary.json` files of the four
-datasets: `make_summary()` builds one, `harmonize()` converts an old one, and `get()`
-reads a value from a file in either scheme. Keys and migration:
+datasets: `make_summary()` builds one and `harmonize()` converts an old one. Keys and
+migration:
 [`docs/SUMMARY_KEYS.md`](docs/SUMMARY_KEYS.md).
 
 ```bash

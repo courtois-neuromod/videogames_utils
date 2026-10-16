@@ -1,8 +1,8 @@
 # `_summary.json` keys
 
 Every repetition has a `gamelogs/*_summary.json` next to its `.bk2`. The four datasets
-share one key scheme, defined in `videogames_utils.summary` (`SHARED_KEYS`, `EXTRA_KEYS`,
-`KEY_DESCRIPTIONS`). Keys are UpperCamelCase, like the `trial_type` vocabulary in
+share one key scheme, defined in `videogames_utils.summary` (`SHARED_KEYS`,
+`EXTRA_KEYS`). Keys are UpperCamelCase, like the `trial_type` vocabulary in
 [`EVENT_REFERENCE.md`](EVENT_REFERENCE.md).
 
 The per-game columns give the key each dataset used before (`same`: unchanged; `—`: the
@@ -76,8 +76,7 @@ repetition's `_variables.json`. Everything else is a rename.
 
 By default the old keys stay in the file after the new ones, with the same values, so
 code reading `cleared`, `end_score`, `Duration_seconds`, ... keeps working for one
-release. Run with `--drop-legacy` once downstream code reads the new names. Code that has
-to read both old and new files can use `videogames_utils.summary.get(data, "Score")`.
+release. Run with `--drop-legacy` once downstream code reads the new names.
 
 Two old keys have no new counterpart:
 

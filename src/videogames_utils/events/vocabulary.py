@@ -433,7 +433,7 @@ COLUMN_DESCRIPTIONS: Dict[str, dict] = {
     "stim_file": {"Description": "Path to the .bk2 replay of the repetition. Set on the "
                                  "gym-retro_game row only; every other event falls inside "
                                  "exactly one of those windows. Per-repetition metadata "
-                                 "(Phase, IndexInRun, IndexGlobal, IndexLevel, Outcome) "
+                                 "(phase, IndexInRun, IndexGlobal, IndexLevel, Outcome) "
                                  "lives in the matching gamelogs/*_summary.json. "
                                  "'Missing file' marks a repetition whose .bk2 was "
                                  "lost; its row is kept, with no events inside it."},
