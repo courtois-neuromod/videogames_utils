@@ -26,15 +26,6 @@ Documentation:
   row count of every event in that dataset.
 - each dataset's `task-<task>_events.json` BIDS sidecar.
 
-## Provenance (`videogames_utils.provenance`)
-
-Each dataset keeps one `code/provenance.json` with a section per generation step: code
-commits, inputs, environment, parameters and outputs. A generator wraps its work in
-`provenance.step()`, which refuses to run if videogames_utils or the dataset has
-uncommitted changes, or an input submodule is at an unpushed commit. Usage is in the
-module docstring; `provenance.update_generated_by()` fills `GeneratedBy` in
-`dataset_description.json`.
-
 ## Installation
 
 ```bash
@@ -231,6 +222,15 @@ report = generate_aligned_recording(
     include_audio=True
 )
 ```
+
+## Provenance (`videogames_utils.provenance`)
+
+Each dataset keeps one `code/provenance.json` with a section per generation step: code
+commits, inputs, environment, parameters and outputs. A generator wraps its work in
+`provenance.step()`, which refuses to run if videogames_utils or the dataset has
+uncommitted changes, or an input submodule is at an unpushed commit. Usage is in the
+module docstring; `provenance.update_generated_by()` fills `GeneratedBy` in
+`dataset_description.json`.
 
 ## CNeuroMod Integration
 
