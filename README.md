@@ -26,6 +26,17 @@ Documentation:
   row count of every event in that dataset.
 - each dataset's `task-<task>_events.json` BIDS sidecar.
 
+## Repetition summaries (`videogames_utils.summary`)
+
+One key scheme for the per-repetition `gamelogs/*_summary.json` files of the four
+datasets: `make_summary()` builds one, `harmonize()` converts an old one, and `get()`
+reads a value from a file in either scheme. Keys and migration:
+[`docs/SUMMARY_KEYS.md`](docs/SUMMARY_KEYS.md).
+
+```bash
+python -m videogames_utils.summary . shinobi   # convert a dataset's summaries in place
+```
+
 ## Installation
 
 ```bash

@@ -297,7 +297,7 @@ non-zero on any error. The replay sidecars must exist first
 | `stim_file` | Path to the repetition's `.bk2` replay. Set on the `gym-retro_game` row only. |
 
 Onsets are computed at the console's true frame rate ({fs:.6f} Hz, read from the
-emulator core), not 60.0 Hz. Per-repetition metadata (`phase`, `IndexInRun`,
+emulator core), not 60.0 Hz. Per-repetition metadata (`Phase`, `IndexInRun`,
 `IndexGlobal`, `IndexLevel`, `Outcome`) is not repeated on event rows; it lives in the
 repetition's `gamelogs/*_summary.json`, keyed by the `stim_file` of the container row.
 
