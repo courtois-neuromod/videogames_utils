@@ -26,6 +26,26 @@ Documentation:
   row count of every event in that dataset.
 - each dataset's `task-<task>_events.json` BIDS sidecar.
 
+## Provenance (`videogames_utils.provenance`)
+
+Each dataset keeps one `code/provenance.json`, rewritten in place, with a section per
+generation step (`replays`, `videos`, `lowlevel`, `annotations`, `sidecars`): code
+commits, input annex keys or checksums, input submodule commits, environment,
+parameters and outputs. A generator wraps its work in `provenance.step()`, which refuses
+to run, with no override, if videogames_utils or the dataset has uncommitted changes or
+an input submodule is at an unpushed commit:
+
+```python
+from videogames_utils import provenance
+
+with provenance.step(".", "replays", "code/replays/generate_replays.py",
+                     parameters=vars(args), input_submodules=["stimuli"]) as prov:
+    prov.add_inputs(bk2_files + [rom_path] + state_files)
+    ...  # generate
+    prov.add_outputs(written_files)
+provenance.update_generated_by(".")  # summary into dataset_description.json GeneratedBy
+```
+
 ## Installation
 
 ```bash
