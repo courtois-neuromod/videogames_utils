@@ -19,7 +19,7 @@ from .events_widget import EventsWidget
 from .glassbrain_widget import GlassBrainWidget
 from .physio_widget import PhysioWidget
 from .controller_widget import ControllerWidget
-from .utils import detect_game_from_filename, find_annotated_events_for_replay
+from .utils import find_annotated_events_for_replay
 import pandas as pd
 
 
