@@ -12,7 +12,6 @@ from stable_retro.enums import State
 
 def replay_bk2(
     bk2_path,
-    skip_first_step: bool = False,
     state: State = State.NONE,
     game: str | None = None,
     scenario: str | None = None,
@@ -24,8 +23,6 @@ def replay_bk2(
 
     Args:
         bk2_path (str): Path to the bk2 file to be replayed.
-        skip_first_step (bool, optional): Whether to skip the first step of the movie.
-            Defaults to False. For CNeuroMod data, apply to first bk2 of each run.
         game (str, optional): The name of the game. If None, inferred from bk2 file.
         scenario (str, optional): The scenario to be used in the emulator.
         inttype: The integration type for the emulator.
@@ -54,8 +51,6 @@ def replay_bk2(
         actions = emulator.buttons
         emulator.reset()
         audio_rate = int(emulator.em.get_audio_rate())
-        if skip_first_step:
-            movie.step()
         done_flags = []
         while movie.step():
             keys = []
@@ -83,7 +78,6 @@ def replay_bk2(
 
 def get_variables_from_replay(
     bk2_fpath,
-    skip_first_step=True,
     state=State.NONE,
     game=None,
     scenario=None,
@@ -93,7 +87,6 @@ def get_variables_from_replay(
 
     Args:
         bk2_fpath: Path to the bk2 file.
-        skip_first_step: Whether to skip the first step.
         state: Initial state for the emulator.
         game: Game name (inferred from bk2 if None).
         scenario: Scenario name.
@@ -104,7 +97,6 @@ def get_variables_from_replay(
     """
     replay = replay_bk2(
         bk2_fpath,
-        skip_first_step=skip_first_step,
         state=state,
         game=game,
         scenario=scenario,
