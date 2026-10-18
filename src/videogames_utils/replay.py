@@ -10,6 +10,27 @@ import stable_retro as retro
 from stable_retro.enums import State
 
 
+class DoneConditionWarning(UserWarning):
+    """A replay whose ``done`` flag is not set on its last frame only."""
+
+
+def done_problem(done_flags, bk2_path) -> str | None:
+    """Describe what is wrong with a replay's ``done`` flags, or return None if nothing is.
+
+    A recording stops on the step where the scenario's done condition is met, so ``done``
+    must be set on the last frame and on no other. Anything else means the recording, or
+    the scenario used to replay it, has a problem.
+    """
+    done_frames = [i for i, done in enumerate(done_flags) if done]
+    last = len(done_flags) - 1
+    if done_frames == [last]:
+        return None
+    if not done_frames:
+        return f"{bk2_path}: done is never set ({len(done_flags)} frames)"
+    shown = ", ".join(str(i) for i in done_frames[:5]) + (", ..." if len(done_frames) > 5 else "")
+    return f"{bk2_path}: done is set on frame(s) {shown}, expected only on the last frame ({last})"
+
+
 def replay_bk2(
     bk2_path,
     state: State = State.NONE,
@@ -26,8 +47,8 @@ def replay_bk2(
         game (str, optional): The name of the game. If None, inferred from bk2 file.
         scenario (str, optional): The scenario to be used in the emulator.
         inttype: The integration type for the emulator.
-        check_done (bool, optional): If True, emit a warning when the done condition is
-            never met, or when it is met but not on the last frame. Defaults to True.
+        check_done (bool, optional): If True, emit a DoneConditionWarning unless ``done`` is
+            set on the last frame only (see ``done_problem``). Defaults to True.
 
     Yields:
         tuple: A tuple containing:
@@ -63,13 +84,10 @@ def replay_bk2(
             state = emulator.em.get_state()
             audio_chunk = emulator.em.get_audio().copy()
             yield frame, keys, annotations, audio_chunk, audio_rate, truncate, actions, state
-        if check_done and done_flags:
-            if not any(done_flags):
-                warnings.warn(f"Done condition was never met in {bk2_path}")
-            elif not done_flags[-1]:
-                warnings.warn(
-                    f"Done condition was met before the last frame but not on it in {bk2_path}"
-                )
+        if check_done:
+            problem = done_problem(done_flags, bk2_path)
+            if problem:
+                warnings.warn(problem, DoneConditionWarning)
     finally:
         if emulator is not None:
             emulator.close()
