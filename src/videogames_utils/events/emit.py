@@ -11,25 +11,6 @@ from typing import Iterable, List, Optional
 
 import pandas as pd
 
-#: Authoritative frame rates, read from the emulator cores via
-#: ``retro.make(game).em.get_screen_rate()``. The pipelines previously hardcoded 60.0,
-#: which drifts by ~0.16% on NES/SNES and ~0.13% on Genesis -- up to ~0.6 s over the
-#: longest repetitions, comparable to a TR.
-FRAME_RATES = {
-    "SuperMarioBros-Nes": 60.099826520671,
-    "SuperMarioBros3-Nes": 60.099826520671,
-    "SuperMarioAllStars-Snes": 60.098811862348,
-    "ShinobiIIIReturnOfTheNinjaMaster-Genesis": 59.922743404312,
-}
-
-#: task name -> frame rate, for callers that only know the BIDS task label.
-TASK_FRAME_RATES = {
-    "mario": FRAME_RATES["SuperMarioBros-Nes"],
-    "mario3": FRAME_RATES["SuperMarioBros3-Nes"],
-    "mariostars": FRAME_RATES["SuperMarioAllStars-Snes"],
-    "shinobi": FRAME_RATES["ShinobiIIIReturnOfTheNinjaMaster-Genesis"],
-}
-
 #: Canonical column order for the annotated events files.
 #:
 #: Deliberately minimal. Dropped in favour of the per-repetition sidecar or the event

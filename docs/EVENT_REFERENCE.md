@@ -17,8 +17,8 @@ each dataset's `task-<task>_events.json`.
 both `EnemyOnScreen/{type}` and `EnemyDefeated/{method}/{type}` expand one per species.
 Counts are from the files regenerated on 2026-09-12.
 
-Each dataset's `code/annotations/README.md` is generated from the same vocabulary
-(`python -m videogames_utils.events.docs <dataset> <task>`) and lists, for that game,
+Each dataset's `code/annotations/README.md` is generated from its vocabulary
+(`python -m videogames_utils.events.docs <dataset>`) and lists, for that game,
 every entry it may emit with its row count, naming the entries that are defined but never
 produced and why. This document is the cross-game reference behind those.
 

@@ -1,7 +1,8 @@
-"""The controlled ``trial_type`` vocabulary shared by the four CNeuroMod videogame
-datasets, and the BIDS ``task-<task>_events.json`` sidecar generated from it.
+"""The controlled ``trial_type`` vocabulary of the CNeuroMod videogame datasets, and the
+BIDS ``task-<task>_events.json`` sidecar generated from it.
 
-The vocabulary follows ``Event-Types.pdf``. Event names are hierarchical, with ``/``
+Each game declares the entries it may emit (``Game.vocabulary``, see :mod:`.game`); this
+module holds what they share. The vocabulary follows ``Event-Types.pdf``. Event names are hierarchical, with ``/``
 separating a category from its qualifier, e.g. ``EnemyDefeated/Stomp`` or
 ``EnemyOnScreen/Goomba``. Placeholders written ``{...}`` in the specification are filled
 at generation time with a decoded object name.
@@ -12,11 +13,8 @@ the caller may dump wherever it wants.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
-from typing import Dict, List, Optional, Sequence
-
-#: The four task names, in the order used throughout the datasets.
-TASKS = ("mario", "mariostars", "mario3", "shinobi")
+from dataclasses import dataclass, field
+from typing import Dict, Sequence
 
 
 @dataclass(frozen=True)
@@ -26,7 +24,6 @@ class EventType:
     Attributes:
         name: The ``trial_type`` value, or a template containing ``{...}``.
         description: Prose definition, reused verbatim in the BIDS sidecar.
-        tasks: Which tasks may emit it.
         former: Previous ``trial_type`` values that map onto this one.
         parametric: True if the event carries a ``value`` column.
         durational: True if ``duration`` is meaningful (not a point event).
@@ -34,7 +31,6 @@ class EventType:
 
     name: str
     description: str
-    tasks: Sequence[str]
     former: Sequence[str] = field(default_factory=tuple)
     parametric: bool = False
     durational: bool = False
@@ -49,322 +45,6 @@ class EventType:
         return self.name.split("/", 1)[0]
 
 
-ALL = ("mario", "mariostars", "mario3", "shinobi")
-MARIOS = ("mario", "mariostars", "mario3")
-SMB1S = ("mario", "mariostars")
-
-VOCABULARY: List[EventType] = [
-    # ---------------------------------------------------------------- player events
-    EventType("PlayerDamaged",
-              "The player is hit and loses the current power-up state (Mario games) or "
-              "health (Shinobi).",
-              ALL, former=("Hit/powerup_lost", "HealthLoss")),
-    EventType("PlayerDied/Enemy",
-              "The player dies after being hit by an enemy or another damaging object.",
-              MARIOS, former=("Hit/life_lost", "Hit/killed")),
-    EventType("PlayerDied/Fall",
-              "The player falls into a pit and dies. `onset` is the frame the player "
-              "drops below the bottom of the screen and `duration` runs to the frame "
-              "the life is actually lost, about 4 s later -- the game lets the player "
-              "fall out of the level before resetting.",
-              MARIOS, former=("Hit/fall",), durational=True),
-    EventType("PlayerDied/Timeout",
-              "The player dies because the level timer ran out.",
-              MARIOS, former=("Hit/timeout",)),
-    EventType("PlayerDied",
-              "The player loses all health or dies from an environmental hazard. "
-              "`onset` is the frame health reaches zero and `duration` runs to the frame "
-              "the life is actually lost, 2-6 s later, once the death animation and the "
-              "fade have played.",
-              ("shinobi",), durational=True),
-    EventType("LifeGained", "The player collects or earns an extra life.", ALL),
-    EventType("HealthGained",
-              "The player collects a health item and the health bar increases.",
-              ("shinobi",), former=("HealthGain",)),
-
-    # ---------------------------------------------------------- player state events
-    # One row per continuous stretch of a state, with `duration` spanning the whole
-    # stretch: these describe what the player *is*, not the moment it changed. Forms
-    # (Small, Super, Fire and the mario3 suits; Normal in Shinobi) are mutually exclusive
-    # and together tile every frame on which the player is alive in the level -- i.e.
-    # outside the Screen/Death, Screen/LevelIntro, Screen/GameOver and Screen/Map
-    # stretches. The other states are overlays that can co-occur with a form and with
-    # each other. A row ends when the state is lost, when the player dies, or when the
-    # repetition ends. They replace the Powerup_started/expired and Flight_started/expired
-    # pairs.
-    EventType("PlayerState/Small",
-              "The player is small Mario: no power-up. Together with the other form rows "
-              "this covers every frame on which the player is alive in the level.",
-              MARIOS, durational=True),
-    EventType("PlayerState/Normal",
-              "The player is in Shinobi's single form. Joe Musashi has no power-up forms, "
-              "so this row simply covers every frame on which the player is alive in the "
-              "level (the temporary weapon upgrade is not tracked; see the README). "
-              "Present for uniformity with the Mario datasets.",
-              ("shinobi",), durational=True),
-    EventType("PlayerState/Super",
-              "The player is Super (big) Mario, from the frame the mushroom is collected "
-              "until hit, death or the end of the repetition.",
-              MARIOS, former=("Powerup_started/Super",), durational=True),
-    EventType("PlayerState/Fire",
-              "The player is Fire Mario (can throw fireballs).",
-              MARIOS, former=("Powerup_started/Fire",), durational=True),
-    EventType("PlayerState/Raccoon", "The player is Raccoon Mario.",
-              ("mario3",), former=("Powerup_started/Raccoon",), durational=True),
-    EventType("PlayerState/Frog", "The player wears the Frog suit.",
-              ("mario3",), former=("Powerup_started/Frog",), durational=True),
-    EventType("PlayerState/Tanooki", "The player wears the Tanooki suit.",
-              ("mario3",), former=("Powerup_started/Tanooki",), durational=True),
-    EventType("PlayerState/Hammer", "The player wears the Hammer Brothers suit.",
-              ("mario3",), former=("Powerup_started/Hammer",), durational=True),
-    EventType("PlayerState/Star",
-              "Star invincibility is active.",
-              MARIOS, former=("Powerup_started/Star", "Powerup_expired/Star",
-                              "Star_activated"), durational=True),
-    EventType("PlayerState/HitRecovery",
-              "Post-hit recovery: the player has just been damaged and blinks. In the "
-              "Mario games nothing can hurt the player until it ends; in Shinobi it is "
-              "the game's post-hit counter.",
-              ALL, durational=True),
-    EventType("PlayerState/Flying",
-              "The player is flying with a flight-capable suit.",
-              ("mario3",), former=("Flight_started", "Flight_expired",
-                                   "Flight_activated"), durational=True),
-    EventType("PlayerState/Statue", "Tanooki Mario is in statue form.",
-              ("mario3",), durational=True),
-    EventType("PlayerState/KuriboShoe", "The player rides Kuribo's Shoe.",
-              ("mario3",), durational=True),
-
-    # ------------------------------------------------------------ item/block events
-    EventType("ItemOnScreen/{item_type}",
-              "A coin, mushroom, flower, star or extra life is visible on screen. "
-              "`duration` spans the time it is visible.",
-              MARIOS, former=("Item_appeared/{item_type}",), durational=True),
-    EventType("ItemCollected/Coin",
-              "The player collects a coin.", MARIOS, former=("Coin_collected",)),
-    EventType("ItemCollected/Powerup",
-              "The player collects a mushroom, flower, star or other power-up item.",
-              MARIOS, former=("Powerup_collected",)),
-    EventType("ItemCollected/{item_type}",
-              "The player collects a health item, weapon upgrade, extra life or other "
-              "collectible.", ("shinobi",)),
-    EventType("BlockSmashed",
-              "The player destroys a breakable brick block from below.",
-              MARIOS, former=("Brick_smashed",)),
-
-    # ----------------------------------------------------------------- enemy events
-    EventType("EnemyOnScreen/{enemy_type}",
-              "A specific enemy type is visible on screen. `duration` runs from the "
-              "frame it becomes visible until it leaves the screen or is defeated; an "
-              "enemy that leaves and returns produces two separate events.",
-              MARIOS, former=("Enemy_appeared/{enemy_type}",), durational=True),
-    EventType("EnemyAttack/{enemy_type}",
-              "An enemy begins an attack, such as firing a projectile or emerging from "
-              "a pipe.", MARIOS),
-    EventType("EnemyDefeated/Stomp/{enemy_type}",
-              "The player defeats an enemy by jumping on it.",
-              MARIOS, former=("Kill/stomp",)),
-    EventType("EnemyDefeated/Projectile/{enemy_type}",
-              "The player defeats an enemy with a fireball or other projectile.",
-              MARIOS, former=("Kill/impact",)),
-    EventType("EnemyDefeated/Shell/{enemy_type}",
-              "The player defeats an enemy using a moving shell.",
-              MARIOS, former=("Kill/kick",)),
-    EventType("EnemyDefeated",
-              "The player defeats an enemy. Shinobi has no RAM map for enemy types, so "
-              "this event is untyped and is inferred from score increments.",
-              ("shinobi",), former=("Kill",)),
-
-    # ----------------------------------------------------- projectile / shell events
-    EventType("ProjectileOnScreen/{projectile_type}",
-              "A fireball, Bullet Bill, hammer or other moving projectile is visible on "
-              "screen. `duration` spans the time it is visible.",
-              MARIOS, former=("Projectile_appeared/{projectile_type}",), durational=True),
-    EventType("ProjectileAppeared/Shuriken",
-              "The player throws a shuriken. A point event: Shinobi has no RAM map for "
-              "object positions, so the projectile cannot be tracked on screen.",
-              ("shinobi",)),
-    EventType("ShellStartedMoving",
-              "A shell begins moving after being kicked or otherwise activated.", MARIOS),
-
-    # ---------------------------------------------------------- environment events
-    EventType("PipeEntered", "The player enters a pipe.", MARIOS),
-    EventType("CheckpointReached",
-              "The player passes the level checkpoint that changes the restart position.",
-              SMB1S),
-    EventType("FlagpoleVisible",
-              "The flagpole at the end of the level becomes visible on screen.", SMB1S),
-    EventType("CastleVisible",
-              "The end-of-level castle becomes visible on screen.", SMB1S),
-    EventType("TimerWarningStarted",
-              "The game begins warning the player that little time remains.", MARIOS),
-
-    # ---------------------------------------------------------- mario3-only events
-    EventType("PSwitchStarted",
-              "The player activates a P-Switch, temporarily changing nearby bricks and "
-              "coins.", ("mario3",), former=("P-Switch_activated",), durational=True),
-    EventType("PSwitchExpired", "The temporary P-Switch effect ends.", ("mario3",)),
-    EventType("GoalCardVisible",
-              "The end-of-level roulette card comes on screen. Its face cycles mushroom / "
-              "flower / star until it is touched, so it is untyped here; the type taken is "
-              "in GoalCardCollected.", ("mario3",),
-              former=("Goal_card_visible/{card_type}",)),
-    EventType("GoalCardCollected/{card_type}",
-              "The player touches and collects the end-of-level goal card.", ("mario3",)),
-    EventType("AutoScrollStarted",
-              "The level begins scrolling independently of the player.", ("mario3",)),
-
-    # --------------------------------------------------------------- shinobi events
-    EventType("WeaponPowerupStarted/{powerup_type}",
-              "The player receives a temporary or persistent weapon upgrade.",
-              ("shinobi",), durational=True),
-    EventType("WeaponPowerupExpired/{powerup_type}",
-              "A temporary weapon upgrade ends or is lost.", ("shinobi",)),
-
-    # ----------------------------------------------------------------- level events
-    EventType("LevelStarted", "A new level or gameplay attempt begins.", ALL),
-    EventType("LevelRestarted", "The level restarts after the player dies.", MARIOS),
-    EventType("LevelCompleted",
-              "The player successfully finishes the level. In Shinobi this is the start "
-              "of the end-of-level fade that closes the recording; it is missed in the "
-              "few cleared repetitions whose recording stopped before the fade.",
-              ALL, former=("Level_complete",)),
-    EventType("LevelExited/Warp",
-              "The player left the level through a warp-zone pipe rather than finishing "
-              "it. Not part of Event-Types.pdf; retained from the previous vocabulary.",
-              SMB1S, former=("Warp",)),
-
-    # ---------------------------------------------------------------- action events
-    # Not covered by Event-Types.pdf. Normalized across games at the user's request, with
-    # the raw button preserved in the `button` column.
-    EventType("Action/Left", "The player holds the left direction.", ALL,
-              former=("LEFT",), durational=True),
-    EventType("Action/Right", "The player holds the right direction.", ALL,
-              former=("RIGHT",), durational=True),
-    EventType("Action/Up", "The player holds the up direction.", ALL,
-              former=("UP",), durational=True),
-    EventType("Action/Down", "The player holds the down direction (duck / crouch).", ALL,
-              former=("DOWN",), durational=True),
-    EventType("Action/Jump", "The player presses the jump button.", ALL,
-              former=("JUMP",), durational=True),
-    EventType("Action/Run", "The player presses the run / throw button (Mario games).",
-              MARIOS, former=("RUN/THROW",), durational=True),
-    EventType("Action/Attack", "The player presses the attack button (Shinobi).",
-              ("shinobi",), former=("HIT",), durational=True),
-    EventType("Action/Ninjutsu", "The player presses the ninjutsu button (Shinobi).",
-              ("shinobi",), former=("NINJUTSU",), durational=True),
-    EventType("Action/Other",
-              "The player presses a button with no documented function in this game "
-              "(e.g. L/R on the SNES pad in Super Mario All-Stars). The raw button is in "
-              "the `button` column.", ALL, durational=True),
-    EventType("Action/Start", "The player presses START (pauses the game).", ALL,
-              former=("START",), durational=True),
-    EventType("Action/Select", "The player presses SELECT / MODE.", ALL,
-              former=("SELECT", "MODE"), durational=True),
-
-    # ---------------------------------------------------------------- screen events
-    # What the game is showing, as opposed to what the player is doing. One durational
-    # row per continuous stretch; the Screen/* rows of a repetition partition it, so
-    # exactly one is active at any frame. Gameplay is the complement of the others.
-    EventType("Screen/Gameplay",
-              "The player controls the character in the level. The Screen/* rows of a "
-              "repetition partition it: exactly one is active at any frame, and this is "
-              "the complement of all the others.",
-              ALL, durational=True),
-    EventType("Screen/LevelIntro",
-              "The level's title card: Super Mario Bros.' black 'WORLD x-y / Mario x n' "
-              "screen, shown when the level starts and again after each death before "
-              "play resumes. mario3 and shinobi have no intro screen.",
-              SMB1S, durational=True),
-    EventType("Screen/Death",
-              "The death sequence: from the frame the player dies, or drops off the "
-              "bottom of the screen, to the end of the death animation and the freeze "
-              "that follows it. The player has no control.",
-              ALL, durational=True),
-    EventType("Screen/LevelEnd",
-              "The end-of-level sequence after the level is completed: the flagpole "
-              "slide, walk into the castle and time bonus (SMB1); the goal card and "
-              "COURSE CLEAR screen (mario3); the ROUND CLEAR bonus tally (shinobi). The "
-              "player has no control.",
-              ALL, durational=True),
-    EventType("Screen/Transition",
-              "A transition inside a level with no player control: pipe, vine or door "
-              "travel and the black or fading screen while the next area loads (SMB1 "
-              "pipes, vines and the exit from a bonus area; mario3 pipes and doors; "
-              "shinobi section fades), and the fade back into play after a shinobi "
-              "death.",
-              ALL, durational=True),
-    EventType("Screen/GameOver",
-              "The GAME OVER screen after the last life is lost: mario3's world map with "
-              "the GAME OVER dialog, shinobi's GAME OVER / CONTINUE screen. Recordings "
-              "were meant to stop at the death, so this only appears where one ran on.",
-              ("mario3", "shinobi"), durational=True),
-    EventType("Screen/Map",
-              "The SMB3 world map, in the rare recording that ran on past the level and "
-              "back to the map with lives remaining.",
-              ("mario3",), durational=True),
-
-    # -------------------------------------------------------------- container event
-    EventType("gym-retro_game",
-              "One repetition of gameplay (one .bk2 file). This is the container row "
-              "that carries `stim_file`; all other events fall inside its window.", ALL,
-              durational=True),
-]
-
-#: Until 2026-09 the segments were Capitalized_snake_case (``Player_died/Enemy``); they
-#: are now UpperCamelCase (``PlayerDied/Enemy``). Each entry's previous spelling is
-#: appended to its ``former`` names so older files still map onto the vocabulary.
-SNAKE_CASE_SEGMENTS: Dict[str, str] = {
-    "AutoScrollStarted": "Auto_scroll_started",
-    "BlockSmashed": "Block_smashed",
-    "CastleVisible": "Castle_visible",
-    "CheckpointReached": "Checkpoint_reached",
-    "EnemyAttack": "Enemy_attack",
-    "EnemyDefeated": "Enemy_defeated",
-    "EnemyOnScreen": "Enemy_on_screen",
-    "FlagpoleVisible": "Flagpole_visible",
-    "GameOver": "Game_over",
-    "GoalCardCollected": "Goal_card_collected",
-    "GoalCardVisible": "Goal_card_visible",
-    "HealthGained": "Health_gained",
-    "HitRecovery": "Hit_recovery",
-    "ItemCollected": "Item_collected",
-    "ItemOnScreen": "Item_on_screen",
-    "KuriboShoe": "Kuribo_shoe",
-    "LevelCompleted": "Level_completed",
-    "LevelEnd": "Level_end",
-    "LevelExited": "Level_exited",
-    "LevelIntro": "Level_intro",
-    "LevelRestarted": "Level_restarted",
-    "LevelStarted": "Level_started",
-    "LifeGained": "Life_gained",
-    "PSwitchExpired": "P-Switch_expired",
-    "PSwitchStarted": "P-Switch_started",
-    "PipeEntered": "Pipe_entered",
-    "PlayerDamaged": "Player_damaged",
-    "PlayerDied": "Player_died",
-    "PlayerState": "Player_state",
-    "ProjectileAppeared": "Projectile_appeared",
-    "ProjectileOnScreen": "Projectile_on_screen",
-    "ShellStartedMoving": "Shell_started_moving",
-    "TimerWarningStarted": "Timer_warning_started",
-    "WeaponPowerupExpired": "Weapon_powerup_expired",
-    "WeaponPowerupStarted": "Weapon_powerup_started",
-}
-
-
-def _snake_case_name(name: str) -> str:
-    return "/".join(SNAKE_CASE_SEGMENTS.get(seg, seg) for seg in name.split("/"))
-
-
-VOCABULARY = [
-    replace(e, former=(*e.former, _snake_case_name(e.name)))
-    if _snake_case_name(e.name) != e.name else e
-    for e in VOCABULARY
-]
-
-BY_NAME: Dict[str, EventType] = {e.name: e for e in VOCABULARY}
-
 #: Events removed from the vocabulary, and why. Kept here so the change is documented
 #: rather than silently absent, and so a reader of an older file can look the name up.
 RETIRED: Dict[str, str] = {
@@ -376,12 +56,17 @@ RETIRED: Dict[str, str] = {
         "its end.",
 }
 
-#: Former trial_type -> new trial_type. Templated targets keep their placeholder, since
-#: the qualifier is only known at generation time.
-FORMER_TO_NEW: Dict[str, str] = {}
-for _e in VOCABULARY:
-    for _f in _e.former:
-        FORMER_TO_NEW.setdefault(_f, _e.name)
+def former_to_new(vocabulary: Sequence[EventType]) -> Dict[str, str]:
+    """Former trial_type -> new trial_type.
+
+    Templated targets keep their placeholder, since the qualifier is only known at
+    generation time.
+    """
+    mapping: Dict[str, str] = {}
+    for entry in vocabulary:
+        for former in entry.former:
+            mapping.setdefault(former, entry.name)
+    return mapping
 
 
 def _matches(template: str, candidate: str) -> bool:
@@ -397,22 +82,11 @@ def _matches(template: str, candidate: str) -> bool:
     return all(w.startswith("{") or w == g for w, g in zip(want, got))
 
 
-def is_valid(trial_type: str, task: Optional[str] = None) -> bool:
-    """True if ``trial_type`` is in the vocabulary (and allowed for ``task``)."""
-    entry = BY_NAME.get(trial_type)
-    if entry is None:
-        for cand in VOCABULARY:
-            if cand.is_template and _matches(cand.name, trial_type):
-                entry = cand
-                break
-    if entry is None:
-        return False
-    return task is None or task in entry.tasks
-
-
-def for_task(task: str) -> List[EventType]:
-    """Vocabulary entries a given task may emit."""
-    return [e for e in VOCABULARY if task in e.tasks]
+def is_valid(trial_type: str, vocabulary: Sequence[EventType]) -> bool:
+    """True if ``trial_type`` is one of the ``vocabulary`` entries, or fits a template."""
+    return any(entry.name == trial_type
+               or (entry.is_template and _matches(entry.name, trial_type))
+               for entry in vocabulary)
 
 
 #: Descriptions for the columns carried by the annotated events files.
@@ -440,10 +114,10 @@ COLUMN_DESCRIPTIONS: Dict[str, dict] = {
 }
 
 
-def write_bids_sidecar(task: str) -> dict:
-    """Build the ``task-<task>_events.json`` contents for one task."""
+def write_bids_sidecar(vocabulary: Sequence[EventType]) -> dict:
+    """Build the ``task-<task>_events.json`` contents for a game's vocabulary."""
     levels = {}
-    for entry in for_task(task):
+    for entry in vocabulary:
         name = entry.name
         if entry.is_template:
             parts = name.split("/")

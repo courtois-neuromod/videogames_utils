@@ -6,15 +6,18 @@ Utilities for processing and analyzing CNeuroMod videogame data, including repla
 
 ## Event annotations (`videogames_utils.events`)
 
-The annotation pipeline shared by the four videogame datasets: a controlled `trial_type`
-vocabulary, RAM decode tables verified against the games' disassemblies, per-game event
-generators, a validator and a review-set builder. Each dataset's
-`code/annotations/generate_annotations.py` is a thin CLI over it.
+The game-agnostic annotation pipeline shared by the videogame datasets: it walks a
+dataset's events files, runs the game's event generator on every repetition, validates the
+result against the RAM and documents it. Everything that depends on the game -- the
+`trial_type` vocabulary it emits, the RAM decode tables, the event generator, the outcome
+rule, the game-specific checks and notes -- is provided by the dataset itself, as a
+`Game` object (`videogames_utils.events.game`) exposed by its `code/game_specific/`
+package. Each dataset's `code/annotations/generate_annotations.py` is a thin CLI over it.
 
 ```bash
 python code/annotations/generate_annotations.py -d . --overwrite --validate   # in a dataset
-python -m videogames_utils.events.validate_cli check . mario                    # validation only
-python -m videogames_utils.events.docs . mario                                  # regenerate code/annotations/README.md
+python -m videogames_utils.events.validate_cli check .                          # validation only
+python -m videogames_utils.events.docs .                                        # regenerate code/annotations/README.md
 python -m videogames_utils.events.render_frames . <bk2> 0,118,124 --check player_state   # look at frames
 ```
 
@@ -22,7 +25,7 @@ Documentation:
 
 - [`docs/EVENT_REFERENCE.md`](docs/EVENT_REFERENCE.md): every event of every game, with
   the RAM address, value and validation figure behind it.
-- each dataset's `code/annotations/README.md`, generated from the vocabulary with the
+- each dataset's `code/annotations/README.md`, generated from its vocabulary with the
   row count of every event in that dataset.
 - each dataset's `task-<task>_events.json` BIDS sidecar.
 

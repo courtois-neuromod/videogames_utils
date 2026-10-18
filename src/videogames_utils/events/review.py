@@ -29,7 +29,7 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
-from .emit import TASK_FRAME_RATES
+from .game import Game, load_game
 
 #: Seconds of context on either side of the event.
 DEFAULT_PAD = 2.0
@@ -100,10 +100,12 @@ def sample_events(events_dir: str, task: str, per_type: int = 50,
     return sample
 
 
-def cut_clip(dataset_dir: str, item: dict, out_dir: str, pad: float = DEFAULT_PAD,
-             fs: Optional[float] = None) -> Optional[str]:
-    """Cut one labelled clip with ffmpeg. Returns the filename, or None on failure."""
-    fs = fs or TASK_FRAME_RATES[item["task"]]
+def cut_clip(dataset_dir: str, item: dict, out_dir: str, fs: float,
+             pad: float = DEFAULT_PAD) -> Optional[str]:
+    """Cut one labelled clip with ffmpeg. Returns the filename, or None on failure.
+
+    ``fs`` is the game's frame rate.
+    """
     video = op.join(dataset_dir, item["stim_file"]).replace(".bk2", "_recording.mp4")
     if not op.exists(video):
         return None
@@ -138,22 +140,26 @@ def cut_clip(dataset_dir: str, item: dict, out_dir: str, pad: float = DEFAULT_PA
     return name
 
 
-def build_review_set(dataset_dir: str, task: str, out_dir: str, per_type: int = 50,
+def build_review_set(dataset_dir: str, out_dir: str, per_type: int = 50,
                      pad: float = DEFAULT_PAD, seed: int = 0,
-                     events_dir: Optional[str] = None) -> dict:
+                     events_dir: Optional[str] = None,
+                     game: Optional[Game] = None) -> dict:
     """Build clips plus an HTML rating page. Returns a manifest dict.
 
     Args:
         dataset_dir: Dataset root, where the ``_recording.mp4`` files live.
         events_dir: Where the annotated events files are, if not in ``dataset_dir``
             (e.g. a scratch output directory from a trial run).
+        game: The dataset's game; loaded from ``dataset_dir`` if not given.
     """
+    game = game or load_game(dataset_dir)
+    task = game.task
     os.makedirs(out_dir, exist_ok=True)
     items = sample_events(events_dir or dataset_dir, task, per_type=per_type, seed=seed)
 
     clips: List[Clip] = []
     for index, item in enumerate(items):
-        name = cut_clip(dataset_dir, item, out_dir, pad=pad)
+        name = cut_clip(dataset_dir, item, out_dir, game.frame_rate, pad=pad)
         if name is None:
             continue
         clips.append(Clip(clip_id=f"{task}-{index:05d}", filename=name, **item))
@@ -285,15 +291,18 @@ def _wilson(successes: int, n: int, z: float = 1.96):
     return max(0.0, centre - half), min(1.0, centre + half)
 
 
-def build_recall_windows(dataset_dir: str, task: str, out_dir: str, n_windows: int = 20,
+def build_recall_windows(dataset_dir: str, out_dir: str, n_windows: int = 20,
                          seconds: float = 10.0, seed: int = 0,
-                         events_dir: Optional[str] = None) -> dict:
+                         events_dir: Optional[str] = None,
+                         game: Optional[Game] = None) -> dict:
     """Cut unlabelled windows for exhaustive annotation, to measure recall.
 
     The rater lists every event of interest they see; comparing that against what the
     generator emitted over the same frame range gives recall (and catches whole event
     types that are never emitted, which a precision-only review cannot).
     """
+    game = game or load_game(dataset_dir)
+    task = game.task
     os.makedirs(out_dir, exist_ok=True)
     rng = random.Random(seed)
     paths = sorted(glob(op.join(events_dir or dataset_dir, "sub-*", "ses-*", "func",
@@ -318,8 +327,8 @@ def build_recall_windows(dataset_dir: str, task: str, out_dir: str, n_windows: i
         start = rng.uniform(0, duration - seconds)
         item = {"task": task, "trial_type": "RECALL_WINDOW", "stim_file": stim,
                 "onset": float(rep["onset"]) + start, "rep_onset": float(rep["onset"]),
-                "frame_start": int(start * TASK_FRAME_RATES[task])}
-        name = cut_clip(dataset_dir, item, out_dir, pad=seconds / 2)
+                "frame_start": int(start * game.frame_rate)}
+        name = cut_clip(dataset_dir, item, out_dir, game.frame_rate, pad=seconds / 2)
         if name is None:
             continue
         expected = events[(events["stim_file"] == stim)
