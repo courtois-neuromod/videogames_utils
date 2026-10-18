@@ -29,7 +29,7 @@ from stable_retro.enums import State
 from tqdm import tqdm
 
 from .replay import replay_bk2, assemble_audio, write_wav
-from .gui.utils import detect_game_from_filename, find_rom_integration_path
+from .gui.utils import find_integration_path
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -479,12 +479,11 @@ def iterate_replay_frames(
         dataset_path = Path.cwd() / dataset_path
     dataset_path = Path(os.path.normpath(dataset_path))
 
-    game_type = detect_game_from_filename(bk2_path.name)
-    rom_integration_path = find_rom_integration_path(dataset_path, game_type)
+    rom_integration_path = find_integration_path(dataset_path, bk2_path)
 
     if not rom_integration_path:
         raise FileNotFoundError(
-            f"ROM integration directory not found for {game_type}.\n"
+            f"ROM integration directory not found for {bk2_path.name}.\n"
             f"Expected in: {dataset_path / 'stimuli'}"
         )
 

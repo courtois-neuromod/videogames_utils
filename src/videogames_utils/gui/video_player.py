@@ -73,8 +73,7 @@ from videogames_utils.replay import replay_bk2
 from stable_retro.enums import State
 import stable_retro as retro
 
-from .utils import (detect_game_from_filename, find_rom_integration_path, load_variables_json,
-                     find_annotated_events_for_replay)
+from .utils import find_integration_path, load_variables_json
 
 
 class VideoPlayer(QWidget):
@@ -196,15 +195,14 @@ class VideoPlayer(QWidget):
         self.replay_info = replay_info
 
         bk2_path = replay_info['path']
-        game_type = detect_game_from_filename(bk2_path.name)
 
         # Find the ROM integration directory
-        rom_integration_path = find_rom_integration_path(dataset_path, game_type)
+        rom_integration_path = find_integration_path(dataset_path, bk2_path)
 
         if not rom_integration_path:
-            self.status_label.setText(f"Error: ROM not found for {game_type} in stimuli/")
+            self.status_label.setText(f"Error: ROM not found for {bk2_path.name} in stimuli/")
             raise FileNotFoundError(
-                f"ROM integration directory not found for {game_type}.\n"
+                f"ROM integration directory not found for {bk2_path.name}.\n"
                 f"Expected in: {dataset_path / 'stimuli'}\n"
                 f"Please ensure the ROM files are present in the dataset's stimuli/ folder."
             )

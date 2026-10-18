@@ -1,6 +1,6 @@
 # videogames_utils
 
-Utilities for processing and analyzing CNeuroMod videogame data, including replay file processing, psychophysics measurements, video generation, and an interactive GUI for exploring datasets.
+Utilities for processing and analyzing CNeuroMod videogame data, including replay file processing, low-level features (luminance, optical flow, audio envelope), video generation, and an interactive GUI for exploring datasets.
 
 ![GUI Screenshot](src/videogames_utils/gui/resources/GUI_screenshot.png)
 
@@ -94,7 +94,7 @@ write_wav(audio, audio_rate, 'output.wav')
 Compute psychophysical measures from video and audio data:
 
 ```python
-from videogames_utils.psychophysics import (
+from videogames_utils.low_level_features import (
     audio_envelope_per_frame,
     compute_luminance,
     compute_optical_flow
@@ -187,7 +187,7 @@ Core replay functionality for processing BK2 files:
 - `assemble_audio()` - Concatenate audio chunks
 - `write_wav()` - Export audio to WAV format
 
-### `psychophysics.py`
+### `low_level_features.py`
 
 Psychophysical measurements for video game stimuli:
 
