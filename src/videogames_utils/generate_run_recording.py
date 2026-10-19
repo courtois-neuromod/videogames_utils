@@ -457,7 +457,6 @@ class StreamingVideoWriter:
 def iterate_replay_frames(
     bk2_path: Path,
     dataset_path: Path,
-    skip_first_step: bool = False
 ) -> Iterator[Tuple[np.ndarray, Optional[np.ndarray], int]]:
     """
     Generator that yields frames from a bk2 file one at a time.
@@ -467,7 +466,6 @@ def iterate_replay_frames(
     Args:
         bk2_path: Path to the .bk2 file
         dataset_path: Path to the dataset root (for finding ROM)
-        skip_first_step: Whether to skip the first step of the replay
 
     Yields:
         Tuple of (frame, audio_chunk or None, audio_rate)
@@ -496,11 +494,10 @@ def iterate_replay_frames(
         stimuli_path = Path.cwd() / stimuli_path
     retro.data.Integrations.add_custom_path(str(Path(os.path.normpath(stimuli_path))))
 
-    logger.info(f"Replaying {bk2_path.name} (skip_first_step={skip_first_step})")
+    logger.info(f"Replaying {bk2_path.name}")
 
     replay_gen = replay_bk2(
         str(bk2_path),
-        skip_first_step=skip_first_step,
         state=State.NONE,
         game=None,
         scenario=None,
@@ -634,17 +631,12 @@ def generate_aligned_recording(
                 report['errors'].append(error_msg)
                 continue
 
-            # First trial of the run needs skip_first_step=True
-            skip_first = (trial_idx == 0)
-
             trial_frame_count = 0
             trial_start_frame = current_frame
 
             try:
                 # Stream frames directly to video writer
-                for frame, audio_chunk, rate in iterate_replay_frames(
-                    bk2_path, dataset_path, skip_first_step=skip_first
-                ):
+                for frame, audio_chunk, rate in iterate_replay_frames(bk2_path, dataset_path):
                     video_writer.write_frame(frame)
                     trial_frame_count += 1
                     current_frame += 1

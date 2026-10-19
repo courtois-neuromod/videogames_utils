@@ -74,7 +74,6 @@ from videogames_utils.replay import get_variables_from_replay
 # Get all replay data at once
 rep_vars, info, frames, states, audio, audio_rate = get_variables_from_replay(
     'replay.bk2',
-    skip_first_step=True,
     game='SuperMarioBros-Nes'
 )
 ```

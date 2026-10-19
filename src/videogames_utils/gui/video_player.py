@@ -74,7 +74,7 @@ from stable_retro.enums import State
 import stable_retro as retro
 
 from .utils import (detect_game_from_filename, find_rom_integration_path, load_variables_json,
-                     is_first_replay_in_run, find_annotated_events_for_replay)
+                     find_annotated_events_for_replay)
 
 
 class VideoPlayer(QWidget):
@@ -216,16 +216,11 @@ class VideoPlayer(QWidget):
             # Add the parent directory (stimuli/) to retro's integration paths
             retro.data.Integrations.add_custom_path(str(rom_integration_path.parent))
 
-            # Determine if we need to skip the first step
-            # First replay of each run needs skip_first_step=True
-            skip_first = replay_info.get('skip_first_step', False)
-
             # Load frames from .bk2 replay
             self.status_label.setText(f"Replaying {bk2_path.name}...")
 
             replay_gen = replay_bk2(
                 str(bk2_path),
-                skip_first_step=skip_first,
                 state=State.NONE,
                 game=None,  # Auto-detect from .bk2
                 scenario=None,

@@ -147,14 +147,13 @@ def get_replays_from_events_files(dataset_path: Path) -> List[Dict]:
     """
     Get all replays by parsing events files in func/ directories
 
-    This is more reliable than globbing for bk2 files, and also determines
-    which replays are first in their run.
+    This is more reliable than globbing for bk2 files.
 
     Args:
         dataset_path: Path to dataset root
 
     Returns:
-        List of replay info dicts with added 'skip_first_step' field
+        List of replay info dicts
     """
     replays = []
 
@@ -168,7 +167,7 @@ def get_replays_from_events_files(dataset_path: Path) -> List[Dict]:
             # Get all gym-retro_game rows
             game_rows = df[df['trial_type'] == 'gym-retro_game']
 
-            for idx, (row_idx, row) in enumerate(game_rows.iterrows()):
+            for _, row in game_rows.iterrows():
                 stim_file = row['stim_file']
 
                 if pd.isna(stim_file):
@@ -183,8 +182,6 @@ def get_replays_from_events_files(dataset_path: Path) -> List[Dict]:
                     continue
 
                 info = get_replay_info(bk2_path)
-                # Add flag for skip_first_step (first replay in this run)
-                info['skip_first_step'] = (idx == 0)
                 info['events_file'] = events_file
 
                 replays.append(info)
@@ -221,44 +218,6 @@ def find_annotated_events_for_replay(dataset_path: Path, subject: str, session: 
         return events_files[0]  # Return first match
 
     return None
-
-
-def is_first_replay_in_run(events_path: Path, bk2_filename: str) -> bool:
-    """
-    Check if this replay is the first in its run
-
-    The first replay in a run is the first gym-retro_game entry in the events file
-    for that specific run.
-
-    Args:
-        events_path: Path to desc-annotated_events.tsv file
-        bk2_filename: Filename of the .bk2 replay
-
-    Returns:
-        True if this is the first replay in the run, False otherwise
-    """
-    if not events_path or not events_path.exists():
-        return False
-
-    try:
-        df = pd.read_csv(events_path, sep='\t')
-
-        # Find the gym-retro_game row that references this .bk2 file
-        game_row_mask = (df['trial_type'] == 'gym-retro_game') & (df['stim_file'].str.contains(bk2_filename, na=False))
-
-        if not game_row_mask.any():
-            return False
-
-        game_row_idx = df[game_row_mask].index[0]
-
-        # Check if there are any previous gym-retro_game rows in the same run
-        # (i.e., in this events file)
-        previous_game_rows = df[df.index < game_row_idx]['trial_type'] == 'gym-retro_game'
-
-        # If no previous game rows, this is the first
-        return not previous_game_rows.any()
-    except Exception:
-        return False
 
 
 def load_annotated_events(events_path: Path, bk2_filename: str) -> pd.DataFrame:

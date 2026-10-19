@@ -119,7 +119,7 @@ class FileBrowser(QWidget):
 
         self.replays = []
 
-        # Try to load from events files first (more reliable, includes skip_first_step info)
+        # Try to load from events files first (more reliable)
         try:
             self.replays = get_replays_from_events_files(self.current_dataset)
             print(f"Loaded {len(self.replays)} replays from events files")
@@ -134,7 +134,6 @@ class FileBrowser(QWidget):
             for bk2_file in bk2_files:
                 try:
                     info = get_replay_info(bk2_file)
-                    info['skip_first_step'] = False  # Unknown without events file
                     self.replays.append(info)
                 except Exception as e:
                     print(f"Error loading {bk2_file}: {e}")

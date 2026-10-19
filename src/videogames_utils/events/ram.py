@@ -355,7 +355,7 @@ def build_shadow_integration(dataset_dir: str, game: str, candidates, dest: str)
 
 
 def replay_with_candidates(dataset_dir, game, bk2_path, candidates,
-                           skip_first_step=False, workdir=None) -> dict:
+                           workdir=None) -> dict:
     """Replay ``bk2_path`` against a shadow integration carrying ``candidates``.
 
     Returns the usual ``repetition_variables`` dict, with the candidate keys added.
@@ -366,7 +366,7 @@ def replay_with_candidates(dataset_dir, game, bk2_path, candidates,
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         repvars, _, frames, _, _ = get_variables_from_replay(
-            bk2_path, skip_first_step=skip_first_step, game=game,
+            bk2_path, game=game,
             inttype=retro.data.Integrations.CUSTOM_ONLY)
     del frames
     return repvars
