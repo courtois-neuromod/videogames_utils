@@ -44,12 +44,14 @@ def main(argv=None) -> int:
     with open(bk2.replace(".bk2", "_variables.json")) as f:
         stored = json.load(f)
     stimuli = op.abspath(op.join(args.dataset_dir, "stimuli"))
-    game = [g for g in os.listdir(stimuli) if op.isfile(op.join(stimuli, g, "data.json"))][0]
+    movie = retro.Movie(bk2)
+    game = movie.get_game()
+    movie.close()
     retro.data.Integrations.add_custom_path(stimuli)
     os.makedirs(args.out, exist_ok=True)
     base = op.basename(bk2).replace(".bk2", "")
     print(f"{base}: game={game} "
-          f"n_stored={len(stored.get('score') or stored.get('health'))}")
+          f"n_stored={len(stored[stored['actions'][0]])}")
 
     want, last = set(frames), max(frames)
     with warnings.catch_warnings():

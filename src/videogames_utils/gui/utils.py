@@ -7,133 +7,29 @@ from typing import Dict, List, Tuple, Optional
 import json
 import pandas as pd
 import numpy as np
+import stable_retro as retro
+
+from ..events.emit import REPETITION_TYPES
 from scipy import stats
 
 
-# Game configurations from the original script
-GAME_CONFIGS = {
-    'mario': {
-        'top_stats': ['score', 'coins', 'lives', 'time', 'world'],
-        'state_vars': {
-            'Power': 'powerstate',
-            'Star': 'star_timer',
-            'Fireballs': 'fireball_counter',
-            'Jump': 'jump_airborne',
-        },
-        'position': ['player_x_posHi', 'player_y_pos'],
-        'buttons': ['B', 'A', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'START', 'SELECT'],
-        'event_vars': [
-            'powerup_appear', 'powerup_yes_no', 'enemy_kill30', 'enemy_kill31',
-            'enemy_kill32', 'enemy_kill33', 'enemy_kill34', 'enemy_kill35',
-        ]
-    },
-    'mario3': {
-        'top_stats': ['score', 'coins', 'lives', 'time', 'world'],
-        'state_vars': {
-            'Form': 'mario_form',
-            'Power': 'powerup',
-            'Invincible': 'invincibility_timer',
-            'Flight': 'flight_timer',
-            'P-Meter': 'p_meter',
-            'Boss HP': 'boss_hp',
-            'In Air': 'in_air',
-        },
-        'position': ['player_x_level', 'player_y_level'],
-        'buttons': ['B', 'A', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'START', 'SELECT'],
-        'event_vars': [
-            'killed', 'stomp_counter', 'boss_hp', 'kuribo_shoe', 'p_switch_timer',
-            'statue_timer', 'in_water', 'complete_level', 'goal_cards_p1_1',
-            'goal_cards_p1_2', 'goal_cards_p1_3',
-        ]
-    },
-    'mariostars': {
-        'top_stats': ['score', 'coins', 'lives', 'time_hundreds', 'current_world'],
-        'state_vars': {
-            'Power': 'player_status',
-            'Star': 'star_timer',
-            'Action': 'player_action_state',
-        },
-        'position': ['player_x_high', 'player_y_low'],
-        'buttons': ['B', 'A', 'X', 'Y', 'L', 'R', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'START', 'SELECT'],
-        'event_vars': []
-    },
-    'shinobi': {
-        'top_stats': ['score', 'lives', 'health', 'shurikens', 'section'],
-        'state_vars': {
-            'Ninjitsu': 'ninjitsu',
-            'Type': 'typeOfNinjitsu',
-            'Status': 'status',
-            'Ride': 'ride',
-        },
-        'position': ['X_player', 'Y_player'],
-        'buttons': ['B', 'A', 'C', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'START', 'MODE'],
-        'event_vars': []
-    }
-}
-
-
-def detect_game_from_filename(filename: str) -> str:
-    """Detect game type from filename"""
-    filename_lower = filename.lower()
-    if 'mariostars' in filename_lower:
-        return 'mariostars'
-    elif 'mario3' in filename_lower:
-        return 'mario3'
-    elif 'mario' in filename_lower:
-        return 'mario'
-    elif 'shinobi' in filename_lower:
-        return 'shinobi'
-    else:
-        raise ValueError(f"Cannot detect game type from filename: {filename}")
-
-
-def find_rom_integration_path(dataset_path: Path, game_type: str) -> Optional[Path]:
+def find_integration_path(dataset_path: Path, bk2_path: Path) -> Optional[Path]:
     """
-    Find the stable_retro integration directory for a game in the stimuli folder
+    Find the stable_retro integration directory of the game a .bk2 was recorded with
 
-    Returns the directory containing rom.nes, data.json, etc.
+    The game name is read from the .bk2 itself and the integration is expected in
+    the dataset's stimuli/ folder, under that name.
+
+    Returns the integration directory (containing data.json), or None if not found.
     """
-    stimuli_path = dataset_path / "stimuli"
-    if not stimuli_path.exists():
-        return None
-
-    # First try specific patterns for known games
-    integration_patterns = {
-        'mario': ['SuperMarioBros-Nes', 'Mario-Nes'],
-        'mario3': ['SuperMarioBros3-Nes', 'Mario3-Nes'],
-        'mariostars': ['SuperMarioAllStars-Snes', 'SuperMario64-n64', 'Mario64-n64'],
-        'shinobi': ['Shinobi3-Genesis', 'RevengeOfShinobi-Genesis',
-                    'ShinobiIIIReturnOfTheNinjaMaster-Genesis', 'Shinobi-Genesis']
-    }
-
-    patterns = integration_patterns.get(game_type, [])
-
-    # Look for the integration directory using patterns
-    for pattern in patterns:
-        integration_dir = stimuli_path / pattern
-        if integration_dir.exists() and integration_dir.is_dir():
-            # Verify it has the required files
-            if (integration_dir / "rom.nes").exists() or \
-               (integration_dir / "rom.md").exists() or \
-               (integration_dir / "rom.sfc").exists() or \
-               (integration_dir / "rom.n64").exists():
-                return integration_dir
-
-    # Fallback: search all subdirectories for any with ROM files
-    # This handles cases where the directory name doesn't match our patterns
+    movie = retro.Movie(str(bk2_path))
     try:
-        for item in stimuli_path.iterdir():
-            if item.is_dir():
-                # Check if this directory contains a ROM file
-                if (item / "rom.nes").exists() or \
-                   (item / "rom.md").exists() or \
-                   (item / "rom.sfc").exists() or \
-                   (item / "rom.n64").exists():
-                    # Found a ROM directory, return it
-                    return item
-    except Exception as e:
-        print(f"Error scanning stimuli directory: {e}")
-
+        game = movie.get_game()
+    finally:
+        movie.close()
+    integration_dir = Path(dataset_path) / "stimuli" / game
+    if (integration_dir / "data.json").exists():
+        return integration_dir
     return None
 
 
@@ -164,8 +60,8 @@ def get_replays_from_events_files(dataset_path: Path) -> List[Dict]:
         try:
             df = pd.read_csv(events_file, sep='\t')
 
-            # Get all gym-retro_game rows
-            game_rows = df[df['trial_type'] == 'gym-retro_game']
+            # Get all repetition rows
+            game_rows = df[df['trial_type'].isin(REPETITION_TYPES)]
 
             for _, row in game_rows.iterrows():
                 stim_file = row['stim_file']
@@ -233,8 +129,8 @@ def load_annotated_events(events_path: Path, bk2_filename: str) -> pd.DataFrame:
     """
     df = pd.read_csv(events_path, sep='\t')
 
-    # Find the gym-retro_game row that references this .bk2 file
-    game_row_mask = (df['trial_type'] == 'gym-retro_game') & (df['stim_file'].str.contains(bk2_filename, na=False))
+    # Find the repetition row that references this .bk2 file
+    game_row_mask = (df['trial_type'].isin(REPETITION_TYPES)) & (df['stim_file'].str.contains(bk2_filename, na=False))
 
     if not game_row_mask.any():
         return pd.DataFrame()  # No events found for this replay
@@ -242,8 +138,8 @@ def load_annotated_events(events_path: Path, bk2_filename: str) -> pd.DataFrame:
     game_row_idx = df[game_row_mask].index[0]
     replay_onset = df.loc[game_row_idx, 'onset']
 
-    # Get the index of the next gym-retro_game row (or end of dataframe)
-    next_game_rows = df[df.index > game_row_idx]['trial_type'] == 'gym-retro_game'
+    # Get the index of the next repetition row (or end of dataframe)
+    next_game_rows = df[df.index > game_row_idx]['trial_type'].isin(REPETITION_TYPES)
     if next_game_rows.any():
         next_game_idx = next_game_rows.idxmax()
         replay_events = df.loc[game_row_idx:next_game_idx-1].copy()

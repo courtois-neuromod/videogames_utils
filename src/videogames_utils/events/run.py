@@ -2,73 +2,50 @@
 
 This is the shared body of what used to be four near-duplicate
 ``code/annotations/generate_annotations.py`` scripts. Each dataset now keeps only a thin
-CLI that calls :func:`annotate_dataset` with its task name.
+CLI that calls :func:`annotate_dataset` with its :class:`~.game.Game`.
 """
 
 from __future__ import annotations
 
+import argparse
+import collections
 import json
 import os
 import os.path as op
-import re
+import sys
+from glob import glob
 from typing import Dict, List, Optional
 
 import pandas as pd
 
 from . import vocabulary
-from .emit import TASK_FRAME_RATES, finalize
-from .generators import shinobi3, smb1, smb3
-
-#: Which generator handles which task.
-GENERATORS = {
-    "mario": lambda v, **kw: smb1.generate(v, "mario", **kw),
-    "mariostars": lambda v, **kw: smb1.generate(v, "mariostars", **kw),
-    "mario3": lambda v, **kw: smb3.generate(v, **kw),
-    "shinobi": lambda v, **kw: shinobi3.generate(v, **kw),
-}
-
-_REP_RE = re.compile(r"rep-(\d+)")
+from .emit import RAW_REPETITION, REPETITION, finalize
+from .game import Game, load_game
 
 
 #: stim_file value of a repetition whose .bk2 was lost.
 MISSING_FILE = "Missing file"
 
 
-def _level_from_events(level, task: str):
-    """Convert a plain events.tsv level to the annotated form, e.g. Level1-1 -> w1l1.
-
-    Only needed for "Missing file" repetitions: the others take their level from the
-    replay's _variables.json.
-    """
-    if not isinstance(level, str):
-        return level
-    if task == "shinobi":  # "4-1" -> "4"
-        return level.split("-")[0]
-    if task == "mario3":  # "1Player.World1.Level5" -> "w1l5", "...World6.Airship" -> "w6lAirship"
-        m = re.fullmatch(r"1Player\.World(\w+)\.(?:Level)?(\w+)", level)
-    else:  # mario, mariostars: "Level1-1" -> "w1l1"
-        m = re.fullmatch(r"Level(\w+)-(\w+)", level)
-    return f"w{m.group(1)}l{m.group(2)}" if m else level
+def n_frames_of(repvars: dict) -> int:
+    """Number of frames of a replay, from its per-frame button presses."""
+    actions = repvars.get("actions") or []
+    return len(repvars.get(actions[0]) or []) if actions else 0
 
 
-def _rep_index(stim_file: str) -> Optional[int]:
-    match = _REP_RE.search(op.basename(stim_file))
-    return int(match.group(1)) if match else None
-
-
-def annotate_run(events_path: str, dataset_dir: str, task: str) -> pd.DataFrame:
+def annotate_run(events_path: str, dataset_dir: str, game: Game) -> pd.DataFrame:
     """Build the annotated events table for one run.
 
     Args:
         events_path: The run's plain ``*_events.tsv``.
         dataset_dir: Dataset root, used to resolve ``stim_file`` paths.
-        task: One of ``mario``, ``mariostars``, ``mario3``, ``shinobi``.
+        game: The dataset's game.
 
     Returns:
         The annotated events DataFrame, or an empty one when no replay is available.
     """
     raw = pd.read_table(events_path)
-    reps = raw[raw["trial_type"] == "gym-retro_game"].reset_index(drop=True)
+    reps = raw[raw["trial_type"] == RAW_REPETITION].reset_index(drop=True)
     if reps.empty:
         return pd.DataFrame()
     missing: List[str] = []
@@ -85,8 +62,7 @@ def annotate_run(events_path: str, dataset_dir: str, task: str) -> pd.DataFrame:
             frames.append(pd.DataFrame([{
                 "onset": float(rep["onset"]),
                 "duration": pd.to_numeric(rep.get("duration"), errors="coerce"),
-                "trial_type": "gym-retro_game",
-                "level": _level_from_events(rep.get("level"), task),
+                "trial_type": REPETITION,
                 "frame_start": pd.NA, "frame_stop": pd.NA,
                 "stim_file": MISSING_FILE,
             }]))
@@ -108,19 +84,15 @@ def annotate_run(events_path: str, dataset_dir: str, task: str) -> pd.DataFrame:
                 summary = json.load(handle)
 
         rep_onset = float(rep["onset"])
-        n_frames = len(repvars.get("score") or repvars.get("health") or [])
-        duration = n_frames / TASK_FRAME_RATES[task]
+        n_frames = n_frames_of(repvars)
+        duration = n_frames / game.frame_rate
 
         # Only the container row carries stim_file; the repetition's phase and indices
         # live in its _summary.json rather than being repeated on every event row.
         defaults = {}
 
-        kwargs = {"level": repvars.get("level", rep.get("level")),
-                  "outcome": summary.get("Outcome")}
-        if task == "mario3":
-            kwargs["rep_index"] = _rep_index(stim)
-
-        rep_events = GENERATORS[task](repvars, **kwargs, **defaults)
+        rep_events = game.generate(repvars, outcome=summary.get("Outcome"), stim_file=stim,
+                                   **defaults)
         if not rep_events.empty:
             rep_events["onset"] = rep_events["onset"] + rep_onset
             frames.append(rep_events)
@@ -128,8 +100,7 @@ def annotate_run(events_path: str, dataset_dir: str, task: str) -> pd.DataFrame:
         # The container row anchors stim_file and stays in the vocabulary as-is.
         container = pd.DataFrame([{
             "onset": rep_onset, "duration": duration,
-            "trial_type": "gym-retro_game",
-            "level": repvars.get("level", rep.get("level")),
+            "trial_type": REPETITION,
             "frame_start": 0, "frame_stop": n_frames,
             "stim_file": stim,
         }])
@@ -143,19 +114,7 @@ def annotate_run(events_path: str, dataset_dir: str, task: str) -> pd.DataFrame:
     return finalize(frames)
 
 
-def _determine_phase(reps: pd.DataFrame) -> str:
-    """discovery = the same level repeated; practice = different levels in sequence.
-
-    Matches the shipped behaviour (comparing the first two repetitions) so the column
-    keeps its established meaning.
-    """
-    levels = reps["level"].tolist()
-    if len(levels) > 1 and levels[0] == levels[1]:
-        return "discovery"
-    return "practice"
-
-
-def annotate_dataset(dataset_dir: str, task: str, output_dir: Optional[str] = None,
+def annotate_dataset(dataset_dir: str, game: Game, output_dir: Optional[str] = None,
                      subjects: Optional[List[str]] = None,
                      sessions: Optional[List[str]] = None,
                      overwrite: bool = False, verbose: bool = True) -> Dict[str, int]:
@@ -187,7 +146,7 @@ def annotate_dataset(dataset_dir: str, task: str, output_dir: Optional[str] = No
                 stats["skipped"] += 1
                 continue
 
-            annotated = annotate_run(events_path, dataset_dir, task)
+            annotated = annotate_run(events_path, dataset_dir, game)
             if annotated.empty:
                 stats["empty"] += 1
                 if verbose:
@@ -202,10 +161,76 @@ def annotate_dataset(dataset_dir: str, task: str, output_dir: Optional[str] = No
     return stats
 
 
-def write_events_sidecar(dataset_dir: str, task: str) -> str:
-    """Write the BIDS ``task-<task>_events.json`` describing the vocabulary."""
-    path = op.join(dataset_dir, f"task-{task}_events.json")
+def census(dataset_dir: str) -> collections.Counter:
+    """trial_type counts over every annotated events file of the dataset."""
+    counts: collections.Counter = collections.Counter()
+    for path in glob(op.join(dataset_dir, "sub-*", "ses-*", "func",
+                             "*_desc-annotated_events.tsv")):
+        counts.update(pd.read_csv(path, sep="\t", usecols=["trial_type"])["trial_type"])
+    return counts
+
+
+def write_events_sidecar(dataset_dir: str, game: Game) -> str:
+    """Write the BIDS ``task-<task>_events.json`` describing the game's vocabulary.
+
+    The decoded types listed are those present in the dataset's annotated events files.
+    """
+    path = op.join(dataset_dir, f"task-{game.task}_events.json")
+    sidecar = vocabulary.write_bids_sidecar(
+        game.vocabulary, trial_types=census(dataset_dir), families=game.families,
+        type_descriptions=game.type_descriptions)
     with open(path, "w") as handle:
-        json.dump(vocabulary.write_bids_sidecar(task), handle, indent=2)
+        json.dump(sidecar, handle, indent=2)
         handle.write("\n")
     return path
+
+
+def main(argv=None, game: Optional[Game] = None) -> int:
+    """Command line front end, called by each dataset's ``generate_annotations.py``."""
+    parser = argparse.ArgumentParser(
+        description="Generate the annotated BIDS event files of a videogame dataset, from "
+                    "the replay sidecars (gamelogs/*_variables.json) written by "
+                    "code/replays/generate_replays.py.")
+    parser.add_argument("-d", "--datapath", default=".", help="Root of the dataset.")
+    parser.add_argument("-o", "--output_path", default=None,
+                        help="Where to write the annotated files. Defaults to writing "
+                             "next to each input events.tsv.")
+    parser.add_argument("--subjects", "-sub", nargs="+", default=None,
+                        help="Subjects to process, e.g. sub-01 sub-02.")
+    parser.add_argument("--sessions", "-ses", nargs="+", default=None,
+                        help="Sessions to process, e.g. ses-001 ses-002.")
+    parser.add_argument("--overwrite", action="store_true",
+                        help="Regenerate files that already exist.")
+    parser.add_argument("--no-sidecar", action="store_true",
+                        help="Skip writing task-<task>_events.json.")
+    parser.add_argument("--validate", action="store_true",
+                        help="Run the schema and RAM-invariant checks afterwards and "
+                             "exit non-zero if any error is found.")
+    args = parser.parse_args(argv)
+    game = game or load_game(args.datapath)
+
+    from . import validation  # imports this module
+
+    print(f"Generating {game.task} annotations in: {args.datapath}")
+    stats = annotate_dataset(args.datapath, game, output_dir=args.output_path,
+                             subjects=args.subjects, sessions=args.sessions,
+                             overwrite=args.overwrite)
+    print(f"\n{stats['written']} written, {stats['skipped']} skipped "
+          f"(already present), {stats['empty']} with no usable replay")
+
+    if not args.no_sidecar and not args.output_path:
+        print(f"wrote {write_events_sidecar(args.datapath, game)}")
+
+    if args.validate:
+        report = validation.validate_dataset(args.output_path or args.datapath, game)
+        print("\n" + report.summary())
+        for finding in report.findings[:40]:
+            print("\n" + str(finding))
+        if report.errors:
+            print(f"\n{len(report.errors)} error(s)")
+            return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

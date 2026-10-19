@@ -4,8 +4,7 @@ Three automatic layers, all with full coverage of whatever they are pointed at:
 
 V0  schema and controlled vocabulary -- structural correctness of the TSVs
 V1  invariants re-derived from the raw RAM by a *different* route than the generator
-V2  cross-port agreement between mario (NES SMB1) and mariostars (SNES SMB1), which are
-    the same levels on two consoles
+V2  enemy rosters compared level by level between two datasets of the same game
 
 The point of V1 is that it must not reuse the generator's own logic: a check that calls
 the same helper the generator called proves nothing. Each invariant here recomputes its
@@ -13,6 +12,9 @@ quantity straight from ``_variables.json``.
 
 Findings are returned as :class:`Finding` records rather than raised, so a run reports
 every problem at once instead of stopping at the first.
+
+The checks here hold for every game; each game adds its own through
+``Game.check_repetition`` and parameterises these ones (form, timer and coin variables).
 """
 
 from __future__ import annotations
@@ -26,52 +28,20 @@ from typing import Dict, Iterable, List, Optional
 
 import pandas as pd
 
-from . import vocabulary
-from .emit import COLUMNS, TASK_FRAME_RATES
+from . import screens, vocabulary
+from .emit import COLUMNS, REPETITION
+from .game import Game
+from .run import n_frames_of
 
 #: Columns every annotated events file must have.
-REQUIRED_COLUMNS = ["trial_type", "onset", "duration", "level", "frame_start",
-                    "frame_stop", "stim_file"]
+REQUIRED_COLUMNS = ["trial_type", "onset", "duration", "frame_start", "frame_stop",
+                    "stim_file"]
 
 #: Events other than the container row must leave stim_file empty.
-CONTAINER = "gym-retro_game"
+CONTAINER = REPETITION
 
 #: Tolerance when comparing an onset recomputed from frame_start, in seconds.
 ONSET_TOLERANCE = 0.002
-
-#: The mutually exclusive PlayerState forms. Together they tile the frames on which the
-#: player is alive in the level.
-FORM_STATES = frozenset({"PlayerState/Small", "PlayerState/Super", "PlayerState/Fire",
-                         "PlayerState/Raccoon", "PlayerState/Frog",
-                         "PlayerState/Tanooki", "PlayerState/Hammer",
-                         "PlayerState/Normal"})
-
-#: Screen/* rows during which no form row may exist.
-NOT_ALIVE_SCREENS = frozenset({"Screen/Death", "Screen/LevelIntro", "Screen/GameOver",
-                               "Screen/Map"})
-
-#: Shortest title card observed (86 frames on the NES, 79 on the SNES); the black screen
-#: between areas is 24 frames on the NES and the task-1 stretch of a pipe 35-42 frames on
-#: the SNES, so a length threshold separates the two by a different route than the
-#: generator's "at the start or after a death" rule.
-INTRO_MIN_FRAMES = 60
-
-#: RAM variable holding the form, per task.
-FORM_VARS = {"mario": "player_status", "mariostars": "player_status", "mario3": "powerup"}
-
-#: (timer variable, trial_type) pairs whose non-zero runs are the overlay states.
-_SMB1_TIMERS = (("star_timer", "PlayerState/Star"),
-                ("injury_timer", "PlayerState/HitRecovery"))
-STATE_TIMERS = {
-    "mario": _SMB1_TIMERS,
-    "mariostars": _SMB1_TIMERS,
-    "mario3": (("invincibility_timer", "PlayerState/Star"),
-               ("invisibility_timer", "PlayerState/HitRecovery"),
-               ("flight_timer", "PlayerState/Flying"),
-               ("statue_timer", "PlayerState/Statue"),
-               ("kuribo_shoe", "PlayerState/KuriboShoe")),
-}
-
 
 @dataclass
 class Finding:
@@ -116,7 +86,7 @@ class Report:
 DEFEAT_SLACK = 4
 
 
-def check_schema(df: pd.DataFrame, task: str, path: str, report: Report) -> None:
+def check_schema(df: pd.DataFrame, game: Game, path: str, report: Report) -> None:
     """V0: structure, controlled vocabulary, ordering and frame/onset consistency."""
     report.checked["files"] += 1
     report.checked["rows"] += len(df)
@@ -136,7 +106,7 @@ def check_schema(df: pd.DataFrame, task: str, path: str, report: Report) -> None
                    f"expected {ordered}, got {list(df.columns)}", "warning")
 
     bad_types = sorted({t for t in df["trial_type"].dropna().unique()
-                        if not vocabulary.is_valid(str(t), task)})
+                        if not vocabulary.is_valid(str(t), game.vocabulary)})
     if bad_types:
         report.add("V0", "trial_type outside the vocabulary", path,
                    f"{bad_types[:10]}")
@@ -161,12 +131,12 @@ def check_schema(df: pd.DataFrame, task: str, path: str, report: Report) -> None
     stray = others["stim_file"].notna().sum() if "stim_file" in others else 0
     if stray:
         report.add("V0", "stim_file set on a non-container row", path,
-                   f"{stray} rows outside gym-retro_game carry a stim_file")
+                   f"{stray} rows outside {CONTAINER} carry a stim_file")
 
     # Every non-container event must fall inside exactly one repetition window.
     reps = df[df["trial_type"] == CONTAINER]
     if reps.empty:
-        report.add("V0", "no repetition rows", path, "no gym-retro_game rows")
+        report.add("V0", "no repetition rows", path, f"no {CONTAINER} rows")
         return
     windows = [(float(r.onset), float(r.onset) + float(r.duration))
                for r in reps.itertuples()]
@@ -219,7 +189,7 @@ def _coin_collections(series) -> int:
     return total
 
 
-def check_invariants(events: pd.DataFrame, repvars: dict, task: str, summary: dict,
+def check_invariants(events: pd.DataFrame, repvars: dict, game: Game, summary: dict,
                      path: str, report: Report) -> None:
     """V1: recompute quantities straight from the RAM and compare with the events.
 
@@ -234,8 +204,7 @@ def check_invariants(events: pd.DataFrame, repvars: dict, task: str, summary: di
                    if t == prefix or t.startswith(prefix + "/"))
 
     # --- coins -------------------------------------------------------------------
-    coin_var = {"mario": "coins", "mariostars": "player_coins",
-                "mario3": "coins_p1"}.get(task)
+    coin_var = game.coin_var
     if coin_var and coin_var in repvars:
         expected = _coin_collections(repvars[coin_var])
         got = counts.get("ItemCollected/Coin", 0)
@@ -251,44 +220,29 @@ def check_invariants(events: pd.DataFrame, repvars: dict, task: str, summary: di
             report.add("V1", "LifeGained disagrees with the lives counter", path,
                        f"counter says {gained}, events say {got}", "warning")
 
-    # --- deaths ------------------------------------------------------------------
-    deaths = prefix_count("PlayerDied")
-    if task == "shinobi" and "lives" in repvars:
-        expected = _diff_decreases(repvars["lives"])
-        if expected != deaths:
-            report.add("V1", "death count disagrees with the lives counter", path,
-                       f"counter says {expected}, events say {deaths}")
-    elif task == "mario3":
-        # One .bk2 is one life, so a failed repetition has exactly one death.
-        outcome = (summary or {}).get("Outcome", "")
-        if outcome.startswith("failed") and deaths != 1:
-            report.add("V1", "failed repetition without exactly one death", path,
-                       f"outcome={outcome}, {deaths} PlayerDied events")
-        if outcome == "cleared" and deaths:
-            report.add("V1", "cleared repetition with a death", path,
-                       f"{deaths} PlayerDied events")
-
     # --- level completion --------------------------------------------------------
     completed = counts.get("LevelCompleted", 0)
     if completed > 1:
         report.add("V1", "more than one LevelCompleted", path, f"{completed} events")
     outcome = (summary or {}).get("Outcome")
     warped = counts.get("LevelExited/Warp", 0)
-    if outcome and task == "shinobi":
-        # Completion is read from the end-of-level fade, which the recording sometimes
-        # stops short of (17 of 536 cleared repetitions), so a miss is only a warning.
+    if outcome and game.completion_miss:
+        # The game's completion signal can legitimately be missing from a cleared
+        # repetition, e.g. when the recording stops before it.
+        severity, reason = game.completion_miss
         if outcome == "cleared" and not completed:
             report.add("V1", "cleared repetition without LevelCompleted", path,
-                       "recording stopped before the end-of-level fade", "warning")
-        if outcome == "failed" and completed:
+                       reason, severity)
+        if outcome.startswith("failed") and completed:
             report.add("V1", "failed repetition with LevelCompleted", path,
                        f"outcome={outcome}, {completed} events")
     elif outcome:
         if outcome == "cleared" and completed != 1:
             if warped:
-                # The shipped Outcome is derived from `jump_airborne == 3`, which is the
-                # flagpole slide AND the vine climb, so a warp taken up a vine is
-                # mislabelled "cleared". The events are right; the summary is not.
+                # A repetition that warped out may be labelled "cleared" by a summary
+                # outcome that cannot tell the warp from the end of the level (SMB1's
+                # `jump_airborne == 3` is the flagpole slide AND the vine climb). The
+                # events are right; the summary is not.
                 report.add("V1", "summary says cleared but the repetition warped out",
                            path,
                            f"outcome={outcome}, LevelExited/Warp present, "
@@ -345,17 +299,18 @@ def check_invariants(events: pd.DataFrame, repvars: dict, task: str, summary: di
 
     # --- screens -----------------------------------------------------------------
     tt = events["trial_type"].astype(str)
-    n_frames = len(repvars.get("score") or repvars.get("health") or [])
-    alive = _check_screens(events, repvars, task, n_frames, path, report)
+    n_frames = n_frames_of(repvars)
+    alive = _check_screens(events, n_frames, path, report)
 
     # --- player states -----------------------------------------------------------
     # Recounted straight from the RAM series: one form row per maximal run of a constant
     # form value over the frames on which the player is alive (outside the Death /
     # LevelIntro / GameOver / Map screens), one overlay row per non-zero run of its
-    # timer. The form rows must also tile the alive frames exactly.
-    form_var = FORM_VARS.get(task)
-    forms = events[tt.isin(FORM_STATES)]
-    if task == "shinobi":
+    # timer. The form rows must also tile the alive frames exactly. A game with a single
+    # form has no form variable: its form row covers each alive stretch.
+    form_var = game.form_var
+    forms = events[tt.isin(game.form_states)]
+    if form_var is None and game.form_states:
         form_var, series = "alive", [0] * n_frames
     else:
         series = repvars.get(form_var) if form_var else None
@@ -379,7 +334,7 @@ def check_invariants(events: pd.DataFrame, repvars: dict, task: str, summary: di
         if overlapping:
             report.add("V1", "overlapping PlayerState form rows", path,
                        f"{overlapping} row(s) start before the previous form ends")
-    for var, trial_type in STATE_TIMERS.get(task, ()):
+    for var, trial_type in game.state_timers:
         if var not in repvars:
             continue
         expected = _nonzero_runs(repvars[var])
@@ -387,18 +342,6 @@ def check_invariants(events: pd.DataFrame, repvars: dict, task: str, summary: di
         if expected != got:
             report.add("V1", f"{trial_type} rows disagree with {var}", path,
                        f"{var} has {expected} non-zero runs, events have {got}")
-    if task == "shinobi":
-        recovery = events[tt == "PlayerState/HitRecovery"]
-        hits = events[tt == "PlayerDamaged"]["frame_start"].astype(int).tolist()
-        if len(recovery) > len(hits):
-            report.add("V1", "more HitRecovery rows than PlayerDamaged", path,
-                       f"{len(recovery)} recoveries, {len(hits)} hits")
-        stray = sum(1 for f in recovery["frame_start"].astype(int)
-                    if not any(abs(f - h) <= 3 for h in hits))
-        if stray:
-            report.add("V1", "HitRecovery not anchored on a PlayerDamaged", path,
-                       f"{stray} row(s) start more than 3 frames from any hit")
-
     # --- frame/onset consistency -------------------------------------------------
     if n_frames:
         over = events[events["frame_stop"].astype("Float64") > n_frames + 1]
@@ -406,16 +349,19 @@ def check_invariants(events: pd.DataFrame, repvars: dict, task: str, summary: di
             report.add("V1", "frame index beyond the end of the repetition", path,
                        f"{len(over)} rows, replay has {n_frames} frames")
 
+    # --- game-specific -------------------------------------------------------------
+    if game.check_repetition is not None:
+        game.check_repetition(events, repvars, summary, path, report)
 
-def _check_screens(events: pd.DataFrame, repvars: dict, task: str, n_frames: int,
-                   path: str, report: Report) -> Optional[List[bool]]:
+
+def _check_screens(events: pd.DataFrame, n_frames: int, path: str,
+                   report: Report) -> Optional[List[bool]]:
     """The Screen/* rows partition the repetition and agree with the point events.
 
     Returns the per-frame alive mask implied by the Screen rows (None if the rows are
     unusable), for the form-row checks.
     """
     tt = events["trial_type"].astype(str)
-    counts = collections.Counter(tt)
     rows = events[tt.str.startswith("Screen/")].sort_values("frame_start")
     if rows.empty:
         report.add("V1", "no Screen rows", path, "a repetition must carry Screen/* rows")
@@ -430,7 +376,7 @@ def _check_screens(events: pd.DataFrame, repvars: dict, task: str, n_frames: int
         return None
     alive = [True] * n_frames
     for start, stop, label in zip(starts, stops, rows["trial_type"]):
-        if label in NOT_ALIVE_SCREENS:
+        if label.split("/", 1)[1] in screens.NOT_ALIVE:
             for frame in range(start, stop + 1):
                 alive[frame] = False
 
@@ -470,54 +416,32 @@ def _check_screens(events: pd.DataFrame, repvars: dict, task: str, n_frames: int
         report.add("V1", "PipeEntered outside any Screen/Transition", path,
                    f"{stray} of {len(pipes)} pipe entries", "warning")
 
-    # SMB1 title cards, recounted by length rather than by context: the engine-0 (NES)
-    # or task-1 (SNES) stretches long enough to be the card.
-    if task in ("mario", "mariostars"):
-        if task == "mario":
-            series = [v == 0 for v in repvars.get("player_state", [])]
-        else:
-            series = [(int(v) // 100) % 100 == 1 for v in repvars.get("reset", [])]
-        long_runs = 0
-        run = 0
-        for v in series + [False]:
-            if v:
-                run += 1
-            else:
-                long_runs += run >= INTRO_MIN_FRAMES
-                run = 0
-        intros = counts.get("Screen/LevelIntro", 0)
-        if intros != long_runs:
-            report.add("V1", "Screen/LevelIntro count disagrees with the title-card "
-                             "stretches", path,
-                       f"{long_runs} stretch(es) >= {INTRO_MIN_FRAMES} frames, "
-                       f"{intros} LevelIntro rows", "warning")
     return alive
 
 
 # ------------------------------------------------------------------------------- V2
 
 
-def check_cross_port(mario_stats: Dict[str, collections.Counter],
-                     stars_stats: Dict[str, collections.Counter],
-                     report: Report, min_reps: int = 3,
-                     tolerance: float = 0.5) -> None:
-    """V2: mario and mariostars play the same SMB1 levels on two consoles.
+def check_cross_port(a_name: str, a_stats: Dict[str, collections.Counter],
+                     b_name: str, b_stats: Dict[str, collections.Counter],
+                     report: Report, min_reps: int = 3) -> None:
+    """V2: two datasets of the same game (e.g. two console ports) play the same levels.
 
     For each level present in both, the set of enemy types encountered should agree. A
-    type seen consistently on one port and never on the other points at a decode error.
+    type seen consistently in one dataset and never in the other points at a decode error.
     """
-    shared = sorted(set(mario_stats) & set(stars_stats))
+    shared = sorted(set(a_stats) & set(b_stats))
     report.checked["levels compared"] = len(shared)
     for level in shared:
-        a, b = mario_stats[level], stars_stats[level]
+        a, b = a_stats[level], b_stats[level]
         if sum(a.values()) < min_reps or sum(b.values()) < min_reps:
             continue
         only_a = sorted(set(a) - set(b))
         only_b = sorted(set(b) - set(a))
         if only_a or only_b:
-            report.add("V2", "enemy roster differs between the two SMB1 ports",
+            report.add("V2", "enemy roster differs between the two datasets",
                        f"level {level}",
-                       f"mario only: {only_a[:6]}; mariostars only: {only_b[:6]}",
+                       f"{a_name} only: {only_a[:6]}; {b_name} only: {only_b[:6]}",
                        "warning")
 
 
@@ -530,7 +454,7 @@ def enemy_roster(events: pd.DataFrame) -> collections.Counter:
 # --------------------------------------------------------------------------- driver
 
 
-def validate_dataset(dataset_dir: str, task: str, report: Optional[Report] = None,
+def validate_dataset(dataset_dir: str, game: Game, report: Optional[Report] = None,
                      limit: Optional[int] = None, with_invariants: bool = True) -> Report:
     """Run V0 (and optionally V1) over a dataset's annotated events files."""
     report = report or Report()
@@ -541,7 +465,7 @@ def validate_dataset(dataset_dir: str, task: str, report: Optional[Report] = Non
         paths = paths[:limit]
     for path in paths:
         df = pd.read_csv(path, sep="\t")
-        check_schema(df, task, path, report)
+        check_schema(df, game, path, report)
         if not with_invariants:
             continue
         if "stim_file" not in df.columns:
@@ -559,7 +483,7 @@ def validate_dataset(dataset_dir: str, task: str, report: Optional[Report] = Non
             if op.exists(sum_path):
                 with open(sum_path) as f:
                     summary = json.load(f)
-            check_invariants(window, repvars, task, summary, stim, report)
+            check_invariants(window, repvars, game, summary, stim, report)
     return report
 
 

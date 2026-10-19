@@ -1,29 +1,53 @@
 # videogames_utils
 
-Utilities for processing and analyzing CNeuroMod videogame data, including replay file processing, psychophysics measurements, video generation, and an interactive GUI for exploring datasets.
+Utilities for processing and analyzing CNeuroMod videogame data, including replay file processing, low-level features (luminance, optical flow, audio envelope), video generation, and an interactive GUI for exploring datasets.
 
 ![GUI Screenshot](src/videogames_utils/gui/resources/GUI_screenshot.png)
 
+## Replay pipeline (`videogames_utils.replays`)
+
+Replays every `.bk2` of a dataset and writes its `gamelogs/` outputs: the game variables
+(`_variables.json`), a video (`_recording.mp4`), low-level features (`_lowlevel.npy`) and
+a `_summary.json` whose common fields (`Subject`, `Session`, `Run`, `Level`, `Bk2File`,
+`IndexInRun`, `IndexGlobal`, `IndexLevel`, `Phase`, `Outcome`, `Duration`, `FrameCount`)
+are the same in every dataset, followed by the game's own. What depends on the game (the
+scenario, the protocol phases, the summary fields) comes from the dataset's `Game` (see
+below). Each dataset's `code/replays/generate_replays.py` is a thin CLI over it:
+
+```bash
+python code/replays/generate_replays.py -nj -1                    # in a dataset
+```
+
+Every replay must have `done` set on its last frame only; the others are listed at the
+end of the run.
+
 ## Event annotations (`videogames_utils.events`)
 
-The annotation pipeline shared by the four videogame datasets: a controlled `trial_type`
-vocabulary, RAM decode tables verified against the games' disassemblies, per-game event
-generators, a validator and a review-set builder. Each dataset's
-`code/annotations/generate_annotations.py` is a thin CLI over it.
+The game-agnostic annotation pipeline shared by the videogame datasets: it walks a
+dataset's events files, runs the game's event generator on every repetition, validates the
+result against the RAM and documents it. Everything that depends on the game -- the
+`trial_type` vocabulary it emits, the RAM decode tables, the event generator, the outcome
+rule, the game-specific checks and notes -- is provided by the dataset itself, as a
+`Game` object (`videogames_utils.events.game`) exposed by its `code/game_specific/`
+package. Each dataset's `code/annotations/generate_annotations.py` is a thin CLI over it.
 
 ```bash
 python code/annotations/generate_annotations.py -d . --overwrite --validate   # in a dataset
-python -m videogames_utils.events.validate_cli check . mario                    # validation only
-python -m videogames_utils.events.docs . mario                                  # regenerate code/annotations/README.md
+python -m videogames_utils.events.validate_cli check .                          # validation only
+python -m videogames_utils.events.docs .                                        # regenerate code/annotations/README.md
 python -m videogames_utils.events.render_frames . <bk2> 0,118,124 --check player_state   # look at frames
+python -m videogames_utils.events.reference ../mario ../mariostars ../mario3 ../shinobi \
+    -o docs/EVENT_REFERENCE.md                                                 # rebuild the common reference
 ```
 
 Documentation:
 
 - [`docs/EVENT_REFERENCE.md`](docs/EVENT_REFERENCE.md): every event of every game, with
-  the RAM address, value and validation figure behind it.
-- each dataset's `code/annotations/README.md`, generated from the vocabulary with the
-  row count of every event in that dataset.
+  the RAM address, value and validation figure behind it. Generated from each dataset's
+  `code/game_specific/reference.md` and annotated files (`docs/build_reference_pdf.sh`
+  renders the PDF).
+- each dataset's `code/annotations/README.md`, generated from its vocabulary and
+  reference, with the row count of every event in that dataset.
 - each dataset's `task-<task>_events.json` BIDS sidecar.
 
 ## Installation
@@ -94,7 +118,7 @@ write_wav(audio, audio_rate, 'output.wav')
 Compute psychophysical measures from video and audio data:
 
 ```python
-from videogames_utils.psychophysics import (
+from videogames_utils.low_level_features import (
     audio_envelope_per_frame,
     compute_luminance,
     compute_optical_flow
@@ -187,7 +211,7 @@ Core replay functionality for processing BK2 files:
 - `assemble_audio()` - Concatenate audio chunks
 - `write_wav()` - Export audio to WAV format
 
-### `psychophysics.py`
+### `low_level_features.py`
 
 Psychophysical measurements for video game stimuli:
 
