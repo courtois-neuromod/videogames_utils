@@ -8,6 +8,8 @@ import json
 import pandas as pd
 import numpy as np
 import stable_retro as retro
+
+from ..events.emit import REPETITION_TYPES
 from scipy import stats
 
 
@@ -58,8 +60,8 @@ def get_replays_from_events_files(dataset_path: Path) -> List[Dict]:
         try:
             df = pd.read_csv(events_file, sep='\t')
 
-            # Get all gym-retro_game rows
-            game_rows = df[df['trial_type'] == 'gym-retro_game']
+            # Get all repetition rows
+            game_rows = df[df['trial_type'].isin(REPETITION_TYPES)]
 
             for _, row in game_rows.iterrows():
                 stim_file = row['stim_file']
@@ -127,8 +129,8 @@ def load_annotated_events(events_path: Path, bk2_filename: str) -> pd.DataFrame:
     """
     df = pd.read_csv(events_path, sep='\t')
 
-    # Find the gym-retro_game row that references this .bk2 file
-    game_row_mask = (df['trial_type'] == 'gym-retro_game') & (df['stim_file'].str.contains(bk2_filename, na=False))
+    # Find the repetition row that references this .bk2 file
+    game_row_mask = (df['trial_type'].isin(REPETITION_TYPES)) & (df['stim_file'].str.contains(bk2_filename, na=False))
 
     if not game_row_mask.any():
         return pd.DataFrame()  # No events found for this replay
@@ -136,8 +138,8 @@ def load_annotated_events(events_path: Path, bk2_filename: str) -> pd.DataFrame:
     game_row_idx = df[game_row_mask].index[0]
     replay_onset = df.loc[game_row_idx, 'onset']
 
-    # Get the index of the next gym-retro_game row (or end of dataframe)
-    next_game_rows = df[df.index > game_row_idx]['trial_type'] == 'gym-retro_game'
+    # Get the index of the next repetition row (or end of dataframe)
+    next_game_rows = df[df.index > game_row_idx]['trial_type'].isin(REPETITION_TYPES)
     if next_game_rows.any():
         next_game_idx = next_game_rows.idxmax()
         replay_events = df.loc[game_row_idx:next_game_idx-1].copy()

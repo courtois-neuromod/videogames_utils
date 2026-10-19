@@ -1,5 +1,5 @@
 """The controlled ``trial_type`` vocabulary of the CNeuroMod videogame datasets, and the
-BIDS ``task-<task>_events.json`` sidecar generated from it.
+BIDS ``task-<task>_events.json`` sidecar and ``events_vocabulary.json`` generated from it.
 
 Each game declares the entries it may emit (``Game.vocabulary``, see :mod:`.game`); this
 module holds what they share. The vocabulary follows ``Event-Types.pdf``. Event names are hierarchical, with ``/``
@@ -7,14 +7,15 @@ separating a category from its qualifier, e.g. ``EnemyDefeated/Stomp`` or
 ``EnemyOnScreen/Goomba``. Placeholders written ``{...}`` in the specification are filled
 at generation time with a decoded object name.
 
-Nothing here reads or writes a dataset; :func:`write_bids_sidecar` returns a dict that
-the caller may dump wherever it wants.
+Nothing here reads or writes a dataset; :func:`write_bids_sidecar` and
+:func:`event_types` return dicts that the caller may dump wherever it wants.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
-from typing import Dict, Sequence
+from typing import Dict, Iterable, Mapping, Optional, Sequence
 
 
 @dataclass(frozen=True)
@@ -24,7 +25,8 @@ class EventType:
     Attributes:
         name: The ``trial_type`` value, or a template containing ``{...}``.
         description: Prose definition, reused verbatim in the BIDS sidecar.
-        former: Previous ``trial_type`` values that map onto this one.
+        former: Previous ``trial_type`` values that map onto this one. Kept for reference
+            only: they are not published in the sidecar or the README.
         parametric: True if the event carries a ``value`` column.
         durational: True if ``duration`` is meaningful (not a point event).
     """
@@ -56,19 +58,6 @@ RETIRED: Dict[str, str] = {
         "its end.",
 }
 
-def former_to_new(vocabulary: Sequence[EventType]) -> Dict[str, str]:
-    """Former trial_type -> new trial_type.
-
-    Templated targets keep their placeholder, since the qualifier is only known at
-    generation time.
-    """
-    mapping: Dict[str, str] = {}
-    for entry in vocabulary:
-        for former in entry.former:
-            mapping.setdefault(former, entry.name)
-    return mapping
-
-
 def _matches(template: str, candidate: str) -> bool:
     """True if ``candidate`` fits ``template``, treating ``{...}`` as one free segment.
 
@@ -89,15 +78,82 @@ def is_valid(trial_type: str, vocabulary: Sequence[EventType]) -> bool:
                for entry in vocabulary)
 
 
+#: The event families shared by the games: a description, and the name of each qualifier
+#: that follows the family in an event name (``EnemyDefeated/<method>/<enemy_type>``).
+#: A qualifier written as a ``{placeholder}`` in the vocabulary is named after it. A game
+#: can add or override families with ``Game.families``.
+FAMILIES: Dict[str, dict] = {
+    "Action": {"Description": "The player holds or presses a controller button.",
+               "Qualifiers": ("role",)},
+    "EnemyAttack": {"Description": "An enemy begins an attack.",
+                    "Qualifiers": ("enemy_type",)},
+    "EnemyDefeated": {"Description": "The player defeats an enemy.",
+                      "Qualifiers": ("method", "enemy_type")},
+    "EnemyOnScreen": {"Description": "An enemy is visible on screen.",
+                      "Qualifiers": ("enemy_type",)},
+    "ItemCollected": {"Description": "The player picks up an item.",
+                      "Qualifiers": ("item_type",)},
+    "ItemOnScreen": {"Description": "An item is visible on screen.",
+                     "Qualifiers": ("item_type",)},
+    "LevelExited": {"Description": "The player leaves the level without finishing it.",
+                    "Qualifiers": ("exit",)},
+    "PlayerDied": {"Description": "The player loses a life.",
+                   "Qualifiers": ("cause",)},
+    "PlayerState": {"Description": "The player's current form, such as a power-up suit, or "
+                                   "a temporary condition such as invincibility.",
+                    "Qualifiers": ("state",)},
+    "ProjectileAppeared": {"Description": "A projectile appears.",
+                           "Qualifiers": ("projectile_type",)},
+    "ProjectileOnScreen": {"Description": "A projectile is visible on screen.",
+                           "Qualifiers": ("projectile_type",)},
+    "Screen": {"Description": "What the game is showing, such as gameplay, a transition or "
+                              "the death animation.",
+               "Qualifiers": ("screen",)},
+}
+
+
+def humanize(name: str) -> str:
+    """``GreenKoopa`` -> ``Green Koopa``: the default description of a decoded type."""
+    return re.sub(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", " ", name)
+
+
+def type_description(type_descriptions: Mapping[str, str], family: str,
+                     name: str) -> Optional[str]:
+    """The description of a decoded type, or None.
+
+    ``"<Family>/<name>"`` takes precedence over ``"<name>"``, for a type that means
+    something different in one family (a ``1Up`` goal card is not a ``1Up`` item).
+    """
+    return type_descriptions.get(f"{family}/{name}", type_descriptions.get(name))
+
+
+def wildcard_name(name: str) -> str:
+    """A vocabulary entry's name with its ``{...}`` placeholders written ``*``."""
+    return "/".join("*" if part.startswith("{") else part for part in name.split("/"))
+
+
+def display_order(name: str) -> tuple:
+    """Sort key for listing events: ``Repetition``, then ``Screen/*``, then the others,
+    each group in alphabetical order. Works on full names, family names and wildcards."""
+    family = name.split("/", 1)[0]
+    return (0 if family == "Repetition" else 1 if family == "Screen" else 2, name)
+
+
 #: Descriptions for the columns carried by the annotated events files.
 COLUMN_DESCRIPTIONS: Dict[str, dict] = {
     "onset": {"Description": "Onset of the event, in seconds from the start of the run.",
               "Units": "s"},
     "duration": {"Description": "Duration of the event in seconds. Zero for point events.",
                  "Units": "s"},
-    "trial_type": {"Description": "Event type, from a controlled vocabulary shared by the "
-                                  "CNeuroMod videogame datasets."},
-    "level": {"Description": "Level identifier of the repetition the event belongs to."},
+    "onset_in_video": {"Description": "Onset of the event in its repetition's replay video "
+                                      "(gamelogs/*_recording.mp4, named after the "
+                                      "repetition's stim_file), in seconds from the video's "
+                                      "first frame: frame_start divided by the frame rate. "
+                                      "n/a for a repetition without a replay.",
+                       "Units": "s"},
+    "trial_type": {"Description": "Event type: a family, optionally followed by qualifiers "
+                                  "separated by `/`, e.g. `EnemyDefeated/Stomp/Goomba`. "
+                                  "`Levels` lists every value."},
     "frame_start": {"Description": "Index of the first emulator frame of the event, "
                                    "relative to the start of its repetition."},
     "frame_stop": {"Description": "Index of the last emulator frame of the event, "
@@ -105,7 +161,7 @@ COLUMN_DESCRIPTIONS: Dict[str, dict] = {
     "button": {"Description": "Raw controller button underlying an Action/* event. "
                               "n/a for all other events."},
     "stim_file": {"Description": "Path to the .bk2 replay of the repetition. Set on the "
-                                 "gym-retro_game row only; every other event falls inside "
+                                 "Repetition row only; every other event falls inside "
                                  "exactly one of those windows. Per-repetition metadata "
                                  "(phase, IndexInRun, IndexGlobal, IndexLevel, Outcome) "
                                  "lives in the matching gamelogs/*_summary.json. "
@@ -114,23 +170,148 @@ COLUMN_DESCRIPTIONS: Dict[str, dict] = {
 }
 
 
-def write_bids_sidecar(vocabulary: Sequence[EventType]) -> dict:
-    """Build the ``task-<task>_events.json`` contents for a game's vocabulary."""
-    levels = {}
-    for entry in vocabulary:
-        name = entry.name
-        if entry.is_template:
-            parts = name.split("/")
-            placeholders = [p for p in parts if p.startswith("{")]
-            name = "/".join("*" if p.startswith("{") else p for p in parts)
-            desc = (f"{entry.description} The * stands for "
-                    + " then ".join(p.strip("{}") for p in placeholders) + ".")
-        else:
-            desc = entry.description
-        if entry.former:
-            desc += " Formerly: " + ", ".join(repr(f) for f in entry.former) + "."
-        levels[name] = desc
+def event_types(vocabulary: Sequence[EventType], trial_types: Iterable[str] = (),
+                families: Optional[Mapping[str, dict]] = None,
+                type_descriptions: Optional[Mapping[str, str]] = None) -> Dict[str, dict]:
+    """The game's events, described hierarchically, one entry per family.
 
+    An event with no qualifier (``LevelStarted``) is just described. A family with
+    qualifiers gets its description, the ``Format`` of its names, and one list per
+    qualifier of the values it takes::
+
+        "EnemyDefeated": {
+            "Description": "The player defeats an enemy.",
+            "Format": "EnemyDefeated/<method>/<enemy_type>",
+            "method": {"Stomp": "...", "Projectile": "...", "Shell": "..."},
+            "enemy_type": {"Goomba": "Goomba.", ...},
+        }
+
+    A qualifier filled at generation time with a decoded name lists the values present in
+    ``trial_types``. Families are in :func:`display_order`; the values within each list
+    are in alphabetical order.
+    """
+    families = {**FAMILIES, **(families or {})}
+    type_descriptions = type_descriptions or {}
+    present = sorted(set(map(str, trial_types)))
+    by_family: Dict[str, list] = {}
+    for entry in vocabulary:
+        by_family.setdefault(entry.name.split("/", 1)[0], []).append(entry)
+
+    tree: Dict[str, dict] = {}
+    for family in sorted(by_family, key=display_order):
+        entries = by_family[family]
+        bare = [e for e in entries if "/" not in e.name]
+        qualified = [e for e in entries if "/" in e.name]
+        if not qualified:
+            tree[family] = {"Description": bare[0].description}
+            continue
+        spec = families.get(family, {})
+        if spec.get("Description"):
+            description = spec["Description"]
+        elif len(qualified) == 1:
+            description = qualified[0].description
+        else:
+            raise KeyError(f"no description for the event family {family!r}; add it to "
+                           "the game's families")
+        node: Dict[str, object] = {"Description": description}
+        formats: list = []
+        lists: Dict[str, Dict[str, str]] = {}
+        for entry in qualified:
+            parts = entry.name.split("/")[1:]
+            names = []
+            for index, part in enumerate(parts):
+                if part.startswith("{"):
+                    name = part.strip("{}")
+                    values = lists.setdefault(name, {})
+                    for value in present:
+                        if _matches(entry.name, value):
+                            seg = value.split("/")[index + 1]
+                            values[seg] = (type_description(type_descriptions, family, seg)
+                                           or humanize(seg) + ".")
+                else:
+                    qualifiers = spec.get("Qualifiers", ())
+                    if index >= len(qualifiers):
+                        raise KeyError(f"no qualifier name for {entry.name!r}; add the "
+                                       "family to the game's families")
+                    name = qualifiers[index]
+                    lists.setdefault(name, {})[part] = entry.description
+                names.append(name)
+            fmt = "/".join([family] + [f"<{n}>" for n in names])
+            if fmt not in formats:
+                formats.append(fmt)
+        node["Format"] = formats[0] if len(formats) == 1 else formats
+        for name, values in lists.items():
+            node[name] = dict(sorted(values.items()))
+        tree[family] = node
+    return tree
+
+
+def levels(vocabulary: Sequence[EventType], trial_types: Iterable[str] = (),
+           type_descriptions: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
+    """The BIDS ``Levels`` of ``trial_type``: every value, with its description.
+
+    The vocabulary's fixed names, plus the values of its templates present in
+    ``trial_types``. A template value's description is the template's, followed by the
+    descriptions of the decoded types it names, e.g. ``An enemy is visible on screen: a
+    Goomba, a small walking mushroom.``; a type with no description adds nothing, since
+    the value already names it. In :func:`display_order`.
+    """
+    type_descriptions = type_descriptions or {}
+    out = {e.name: e.description for e in vocabulary if not e.is_template}
+    templates = [e for e in vocabulary if e.is_template]
+    for value in set(map(str, trial_types)) - set(out):
+        for entry in templates:
+            if _matches(entry.name, value):
+                family = value.split("/", 1)[0]
+                named = [type_description(type_descriptions, family, seg)
+                         for part, seg in zip(entry.name.split("/"), value.split("/"))
+                         if part.startswith("{")]
+                named = [_lower_article(text) for text in named if text]
+                out[value] = (": ".join([entry.description.rstrip(".")] + named)
+                              if named else entry.description)
+                break
+    return dict(sorted(out.items(), key=lambda item: display_order(item[0])))
+
+
+def _lower_article(text: str) -> str:
+    """``A Goomba.`` -> ``a Goomba.``, to follow a colon; other words keep their case."""
+    first, _, rest = text.partition(" ")
+    return f"{first.lower()} {rest}" if first in ("A", "An", "The") and rest else text
+
+
+def write_bids_sidecar(vocabulary: Sequence[EventType], trial_types: Iterable[str] = (),
+                       type_descriptions: Optional[Mapping[str, str]] = None,
+                       buttons: Optional[Mapping[str, str]] = None) -> dict:
+    """Build the ``task-<task>_events.json`` contents for a game's vocabulary.
+
+    ``trial_type`` is described under the BIDS ``Levels``, one entry per value present
+    (:func:`levels`). Its hierarchical description (:func:`event_types`), one entry per
+    family with a list of values per qualifier, is ``events_vocabulary.json``, which
+    :mod:`.reference` writes for every game at once. ``buttons`` (raw button -> the
+    ``Action/*`` event it produces) becomes the ``Levels`` of the ``button`` column.
+    """
     sidecar = {k: dict(v) for k, v in COLUMN_DESCRIPTIONS.items()}
-    sidecar["trial_type"]["Levels"] = levels
+    sidecar["trial_type"]["Levels"] = levels(vocabulary, trial_types, type_descriptions)
+    if buttons:
+        sidecar["button"]["Description"] = (
+            "Raw controller button underlying an Action/* event; `Levels` gives the event "
+            "each button produces. n/a for all other events.")
+        sidecar["button"]["Levels"] = dict(sorted(buttons.items()))
     return sidecar
+
+
+def is_described(tree: Mapping[str, dict], trial_type: str) -> bool:
+    """True if ``trial_type`` is covered by an :func:`event_types` tree."""
+    family, *qualifiers = str(trial_type).split("/")
+    node = tree.get(family)
+    if node is None:
+        return False
+    formats = node.get("Format")
+    if not qualifiers:
+        return formats is None
+    for fmt in [formats] if isinstance(formats, str) else formats or []:
+        names = [part.strip("<>") for part in fmt.split("/")[1:]]
+        if len(names) == len(qualifiers) and all(
+                value in node.get(name, {}) for name, value in zip(names, qualifiers)):
+            return True
+    return False
