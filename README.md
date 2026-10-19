@@ -4,6 +4,23 @@ Utilities for processing and analyzing CNeuroMod videogame data, including repla
 
 ![GUI Screenshot](src/videogames_utils/gui/resources/GUI_screenshot.png)
 
+## Replay pipeline (`videogames_utils.replays`)
+
+Replays every `.bk2` of a dataset and writes its `gamelogs/` outputs: the game variables
+(`_variables.json`), a video (`_recording.mp4`), low-level features (`_lowlevel.npy`) and
+a `_summary.json` whose common fields (`Subject`, `Session`, `Run`, `Level`, `Bk2File`,
+`IndexInRun`, `IndexGlobal`, `IndexLevel`, `Phase`, `Outcome`, `Duration`, `FrameCount`)
+are the same in every dataset, followed by the game's own. What depends on the game (the
+scenario, the protocol phases, the summary fields) comes from the dataset's `Game` (see
+below). Each dataset's `code/replays/generate_replays.py` is a thin CLI over it:
+
+```bash
+python code/replays/generate_replays.py -nj -1                    # in a dataset
+```
+
+Every replay must have `done` set on its last frame only; the others are listed at the
+end of the run.
+
 ## Event annotations (`videogames_utils.events`)
 
 The game-agnostic annotation pipeline shared by the videogame datasets: it walks a

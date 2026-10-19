@@ -40,6 +40,19 @@ class Game:
             one repetition, with onsets relative to its start.
         outcome: ``outcome(repvars)`` returns how a repetition ended (``cleared``,
             ``failed/...``, ...), stored as ``Outcome`` in its ``_summary.json``.
+        summary: ``summary(repvars, events)`` returns the game's own fields of a
+            repetition's ``_summary.json`` (UpperCamelCase), from its variables and the
+            events ``generate`` makes of them. The common fields are added by
+            :mod:`videogames_utils.replays`.
+        phases: ``phases(repetitions)`` returns the protocol phase of each repetition of
+            the dataset, given the DataFrame built by
+            :func:`videogames_utils.replays.collect_repetitions`. None if the protocol
+            has no phases.
+        scenario: ``scenario(level)`` returns the scenario file, in the game's
+            integration directory, to replay a repetition with, from the ``level`` of
+            its events.tsv row. None to use the integration's ``scenario.json``.
+        process_variables: ``process_variables(repvars)`` corrects a replay's variables
+            before they are saved, e.g. a position that wraps around.
         form_states: The mutually exclusive ``PlayerState/*`` forms, which together tile
             the frames on which the player is alive in the level.
         form_var: RAM variable holding the form, or None if the game has a single form.
@@ -71,6 +84,10 @@ class Game:
     vocabulary: Sequence
     generate: Callable
     outcome: Callable
+    summary: Optional[Callable] = None
+    phases: Optional[Callable] = None
+    scenario: Optional[Callable] = None
+    process_variables: Optional[Callable] = None
     form_states: frozenset = frozenset()
     form_var: Optional[str] = None
     state_timers: Sequence[Tuple[str, str]] = ()
