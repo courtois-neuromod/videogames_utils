@@ -33,7 +33,10 @@ class Game:
         name: Display name of the game, e.g. ``"Super Mario Bros. (NES)"``.
         game_id: stable-retro integration name, e.g. ``"SuperMarioBros-Nes"``; the
             integration lives in the dataset's ``stimuli/<game_id>/``.
-        frame_rate: Emulator frame rate, in frames per second.
+        frame_rate: The rate at which the game was displayed during acquisition, in
+            frames per second: the emulator's native rate
+            (``retro.make(game).em.get_screen_rate()``), unless the task paced it at the
+            screen's refresh rate.
         vocabulary: The :class:`~videogames_utils.events.vocabulary.EventType` entries
             the game may emit.
         generate: ``generate(repvars, outcome=..., stim_file=...)`` returns the events of
