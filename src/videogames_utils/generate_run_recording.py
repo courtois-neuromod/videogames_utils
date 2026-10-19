@@ -1,7 +1,7 @@
 """
 Generate a video recording aligned with BOLD acquisition from events.tsv and bk2 files.
 
-This script reads an events.tsv file, finds all gym-retro_game trials, generates
+This script reads an events.tsv file, finds all repetition trials, generates
 video from each corresponding .bk2 file, and creates a single video that aligns
 with the BOLD recording timing (with black frames filling gaps between game replays).
 """
@@ -29,6 +29,7 @@ from stable_retro.enums import State
 from tqdm import tqdm
 
 from .replay import replay_bk2, assemble_audio, write_wav
+from .events.emit import REPETITION_TYPES
 from .gui.utils import find_integration_path
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -209,7 +210,7 @@ def get_bold_duration(events_path: Path, events_df: pd.DataFrame) -> float:
 
 def parse_game_trials(events_df: pd.DataFrame) -> List[Dict]:
     """
-    Parse all gym-retro_game trials from the events DataFrame.
+    Parse all repetition trials (Repetition or gym-retro_game) from the events DataFrame.
 
     Args:
         events_df: DataFrame with events data
@@ -217,7 +218,7 @@ def parse_game_trials(events_df: pd.DataFrame) -> List[Dict]:
     Returns:
         List of dicts with trial info: onset, duration, stim_file, bk2_filename
     """
-    game_mask = events_df['trial_type'] == 'gym-retro_game'
+    game_mask = events_df['trial_type'].isin(REPETITION_TYPES)
     game_rows = events_df[game_mask]
 
     trials = []
@@ -567,7 +568,7 @@ def generate_aligned_recording(
     logger.info(f"Found {len(trials)} game trials")
 
     if not trials:
-        raise ValueError("No gym-retro_game trials found in events file")
+        raise ValueError("No repetition trials found in events file")
 
     # Initialize alignment report
     report = {

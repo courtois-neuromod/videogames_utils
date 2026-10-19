@@ -29,13 +29,14 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
+from .emit import REPETITION
 from .game import Game, load_game
 
 #: Seconds of context on either side of the event.
 DEFAULT_PAD = 2.0
 
 #: Event types whose correctness is a direct counter read and needs only a spot check.
-LOW_RISK_PREFIXES = ("Action", "ItemCollected/Coin", "gym-retro_game")
+LOW_RISK_PREFIXES = ("Action", "ItemCollected/Coin", REPETITION)
 
 
 @dataclass
@@ -53,7 +54,7 @@ class Clip:
 
 
 def _rep_onsets(events: pd.DataFrame) -> Dict[str, float]:
-    reps = events[events["trial_type"] == "gym-retro_game"]
+    reps = events[events["trial_type"] == REPETITION]
     return {r.stim_file: float(r.onset) for r in reps.itertuples()
             if isinstance(getattr(r, "stim_file", None), str)}
 
@@ -76,7 +77,7 @@ def sample_events(events_dir: str, task: str, per_type: int = 50,
         for row in events.itertuples():
             trial_type = str(row.trial_type)
             stim = getattr(row, "stim_file", None)
-            if trial_type == "gym-retro_game" or not isinstance(stim, str):
+            if trial_type == REPETITION or not isinstance(stim, str):
                 continue
             by_type[trial_type].append({
                 "task": task,
@@ -314,7 +315,7 @@ def build_recall_windows(dataset_dir: str, out_dir: str, n_windows: int = 20,
         if len(windows) >= n_windows:
             break
         events = pd.read_csv(path, sep="\t")
-        reps = events[events["trial_type"] == "gym-retro_game"]
+        reps = events[events["trial_type"] == REPETITION]
         if reps.empty:
             continue
         rep = reps.iloc[rng.randrange(len(reps))]

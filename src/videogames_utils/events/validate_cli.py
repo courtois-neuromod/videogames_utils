@@ -17,6 +17,7 @@ import argparse
 import collections
 import os
 import os.path as op
+import re
 import sys
 from glob import glob
 
@@ -27,14 +28,20 @@ from .game import load_game
 
 
 def _level_rosters(events_dir: str) -> dict:
-    """level -> Counter of enemy types seen, aggregated over a dataset."""
+    """level -> Counter of enemy types seen, aggregated over a dataset.
+
+    The level is the ``level-`` entity of each repetition's ``.bk2``.
+    """
     rosters = collections.defaultdict(collections.Counter)
     for path in sorted(glob(op.join(events_dir, "sub-*", "ses-*", "func",
                                     "*_desc-annotated_events.tsv"))):
         events = pd.read_csv(path, sep="\t")
-        rows = events[events["trial_type"].astype(str).str.startswith("EnemyOnScreen/")]
-        for level, group in rows.groupby("level"):
-            rosters[str(level)].update(group["trial_type"].str.split("/").str[1])
+        for stim, rows in validation._repetition_windows(events):
+            match = re.search(r"_level-([^_]+)_", str(stim))
+            if not match:
+                continue
+            rows = rows[rows["trial_type"].astype(str).str.startswith("EnemyOnScreen/")]
+            rosters[match.group(1)].update(rows["trial_type"].str.split("/").str[1])
     return rosters
 
 
