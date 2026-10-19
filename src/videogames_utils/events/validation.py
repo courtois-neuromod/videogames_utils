@@ -29,16 +29,16 @@ from typing import Dict, Iterable, List, Optional
 import pandas as pd
 
 from . import screens, vocabulary
-from .emit import COLUMNS
+from .emit import COLUMNS, REPETITION
 from .game import Game
 from .run import n_frames_of
 
 #: Columns every annotated events file must have.
-REQUIRED_COLUMNS = ["trial_type", "onset", "duration", "level", "frame_start",
-                    "frame_stop", "stim_file"]
+REQUIRED_COLUMNS = ["trial_type", "onset", "duration", "frame_start", "frame_stop",
+                    "stim_file"]
 
 #: Events other than the container row must leave stim_file empty.
-CONTAINER = "gym-retro_game"
+CONTAINER = REPETITION
 
 #: Tolerance when comparing an onset recomputed from frame_start, in seconds.
 ONSET_TOLERANCE = 0.002
@@ -131,12 +131,12 @@ def check_schema(df: pd.DataFrame, game: Game, path: str, report: Report) -> Non
     stray = others["stim_file"].notna().sum() if "stim_file" in others else 0
     if stray:
         report.add("V0", "stim_file set on a non-container row", path,
-                   f"{stray} rows outside gym-retro_game carry a stim_file")
+                   f"{stray} rows outside {CONTAINER} carry a stim_file")
 
     # Every non-container event must fall inside exactly one repetition window.
     reps = df[df["trial_type"] == CONTAINER]
     if reps.empty:
-        report.add("V0", "no repetition rows", path, "no gym-retro_game rows")
+        report.add("V0", "no repetition rows", path, f"no {CONTAINER} rows")
         return
     windows = [(float(r.onset), float(r.onset) + float(r.duration))
                for r in reps.itertuples()]

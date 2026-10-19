@@ -24,10 +24,6 @@ from typing import Callable, Mapping, Optional, Sequence, Tuple
 GAME_SPECIFIC_DIR = op.join("code", "game_specific")
 
 
-def _unchanged(level):
-    return level
-
-
 @dataclass(frozen=True)
 class Game:
     """The game-specific half of the events pipeline, provided by a dataset.
@@ -40,12 +36,10 @@ class Game:
         frame_rate: Emulator frame rate, in frames per second.
         vocabulary: The :class:`~videogames_utils.events.vocabulary.EventType` entries
             the game may emit.
-        generate: ``generate(repvars, level=..., outcome=..., stim_file=...)`` returns the
-            events of one repetition, with onsets relative to its start.
+        generate: ``generate(repvars, outcome=..., stim_file=...)`` returns the events of
+            one repetition, with onsets relative to its start.
         outcome: ``outcome(repvars)`` returns how a repetition ended (``cleared``,
             ``failed/...``, ...), stored as ``Outcome`` in its ``_summary.json``.
-        level_from_events: Converts the ``level`` of a plain events.tsv row to the
-            annotated form. Only used for "Missing file" repetitions.
         form_states: The mutually exclusive ``PlayerState/*`` forms, which together tile
             the frames on which the player is alive in the level.
         form_var: RAM variable holding the form, or None if the game has a single form.
@@ -56,8 +50,15 @@ class Game:
             ``check_repetition(events, repvars, summary, path, report)``.
         completion_miss: Severity and explanation of a cleared repetition without
             ``LevelCompleted``, for games where it can legitimately happen.
-        notes: Markdown accuracy notes for the dataset README.
+        reference: Markdown reference for this game: how each event is read from the RAM
+            and how it was validated. Embedded in the dataset README and in the common
+            event reference, under a heading per game; use ``###`` and lower.
         not_emitted: trial_type -> why the dataset has no row for it.
+        families: Event families added to or overriding the standard ones
+            (:data:`~.vocabulary.FAMILIES`), for the BIDS sidecar:
+            ``{"Family": {"Description": ..., "Qualifiers": ("name", ...)}}``.
+        type_descriptions: Decoded type name (``"Goomba"``) -> description, for the BIDS
+            sidecar. Types not listed are described by their name.
         golden_sessions: ``(subject, session)`` pairs frozen as regression fixtures.
         ram_candidates: Verified RAM variables to merge into ``data.json``.
         mislabelled: ``data.json`` keys whose names are wrong, with what they hold.
@@ -70,15 +71,16 @@ class Game:
     vocabulary: Sequence
     generate: Callable
     outcome: Callable
-    level_from_events: Callable = _unchanged
     form_states: frozenset = frozenset()
     form_var: Optional[str] = None
     state_timers: Sequence[Tuple[str, str]] = ()
     coin_var: Optional[str] = None
     check_repetition: Optional[Callable] = None
     completion_miss: Optional[Tuple[str, str]] = None
-    notes: str = ""
+    reference: str = ""
     not_emitted: Mapping[str, str] = field(default_factory=dict)
+    families: Mapping[str, dict] = field(default_factory=dict)
+    type_descriptions: Mapping[str, str] = field(default_factory=dict)
     golden_sessions: Sequence[Tuple[str, str]] = ()
     ram_candidates: Sequence = ()
     mislabelled: Mapping[str, str] = field(default_factory=dict)

@@ -7,15 +7,17 @@ CLI that calls :func:`annotate_dataset` with its :class:`~.game.Game`.
 
 from __future__ import annotations
 
+import collections
 import json
 import os
 import os.path as op
+from glob import glob
 from typing import Dict, List, Optional
 
 import pandas as pd
 
 from . import vocabulary
-from .emit import finalize
+from .emit import RAW_REPETITION, REPETITION, finalize
 from .game import Game
 
 
@@ -41,7 +43,7 @@ def annotate_run(events_path: str, dataset_dir: str, game: Game) -> pd.DataFrame
         The annotated events DataFrame, or an empty one when no replay is available.
     """
     raw = pd.read_table(events_path)
-    reps = raw[raw["trial_type"] == "gym-retro_game"].reset_index(drop=True)
+    reps = raw[raw["trial_type"] == RAW_REPETITION].reset_index(drop=True)
     if reps.empty:
         return pd.DataFrame()
     missing: List[str] = []
@@ -58,9 +60,7 @@ def annotate_run(events_path: str, dataset_dir: str, game: Game) -> pd.DataFrame
             frames.append(pd.DataFrame([{
                 "onset": float(rep["onset"]),
                 "duration": pd.to_numeric(rep.get("duration"), errors="coerce"),
-                "trial_type": "gym-retro_game",
-                "level": (game.level_from_events(rep.get("level"))
-                          if isinstance(rep.get("level"), str) else rep.get("level")),
+                "trial_type": REPETITION,
                 "frame_start": pd.NA, "frame_stop": pd.NA,
                 "stim_file": MISSING_FILE,
             }]))
@@ -89,8 +89,7 @@ def annotate_run(events_path: str, dataset_dir: str, game: Game) -> pd.DataFrame
         # live in its _summary.json rather than being repeated on every event row.
         defaults = {}
 
-        rep_events = game.generate(repvars, level=repvars.get("level", rep.get("level")),
-                                   outcome=summary.get("Outcome"), stim_file=stim,
+        rep_events = game.generate(repvars, outcome=summary.get("Outcome"), stim_file=stim,
                                    **defaults)
         if not rep_events.empty:
             rep_events["onset"] = rep_events["onset"] + rep_onset
@@ -99,8 +98,7 @@ def annotate_run(events_path: str, dataset_dir: str, game: Game) -> pd.DataFrame
         # The container row anchors stim_file and stays in the vocabulary as-is.
         container = pd.DataFrame([{
             "onset": rep_onset, "duration": duration,
-            "trial_type": "gym-retro_game",
-            "level": repvars.get("level", rep.get("level")),
+            "trial_type": REPETITION,
             "frame_start": 0, "frame_stop": n_frames,
             "stim_file": stim,
         }])
@@ -161,10 +159,25 @@ def annotate_dataset(dataset_dir: str, game: Game, output_dir: Optional[str] = N
     return stats
 
 
+def census(dataset_dir: str) -> collections.Counter:
+    """trial_type counts over every annotated events file of the dataset."""
+    counts: collections.Counter = collections.Counter()
+    for path in glob(op.join(dataset_dir, "sub-*", "ses-*", "func",
+                             "*_desc-annotated_events.tsv")):
+        counts.update(pd.read_csv(path, sep="\t", usecols=["trial_type"])["trial_type"])
+    return counts
+
+
 def write_events_sidecar(dataset_dir: str, game: Game) -> str:
-    """Write the BIDS ``task-<task>_events.json`` describing the game's vocabulary."""
+    """Write the BIDS ``task-<task>_events.json`` describing the game's vocabulary.
+
+    The decoded types listed are those present in the dataset's annotated events files.
+    """
     path = op.join(dataset_dir, f"task-{game.task}_events.json")
+    sidecar = vocabulary.write_bids_sidecar(
+        game.vocabulary, trial_types=census(dataset_dir), families=game.families,
+        type_descriptions=game.type_descriptions)
     with open(path, "w") as handle:
-        json.dump(vocabulary.write_bids_sidecar(game.vocabulary), handle, indent=2)
+        json.dump(sidecar, handle, indent=2)
         handle.write("\n")
     return path

@@ -1,16 +1,17 @@
-"""Render a dataset's ``code/annotations/README.md`` from the vocabulary and the dataset.
+"""Render a dataset's ``code/annotations/README.md`` from its game and its files.
 
 The event table is built from the game's vocabulary, so it cannot fall behind the code,
 and every entry carries the number of rows it actually has in the dataset, so an entry
 that is defined but never produced is stated as such rather than silently listed. Prose
-that is specific to one game (how each signal was verified, what is known to be missing)
-is provided by the dataset (``Game.notes``, ``Game.not_emitted``) and reviewed by hand.
+that is specific to the game (how each event is read, how it was validated, what is known
+to be missing) is provided by the dataset (``Game.reference``, ``Game.not_emitted``) and
+reviewed by hand.
 
     python -m videogames_utils.events.docs /path/to/mario
     python -m videogames_utils.events.docs /path/to/mario -o /tmp/README.md
 
-The full cross-game reference (RAM addresses, values, validation figures for every
-event) is ``docs/EVENT_REFERENCE.md`` in the videogames_utils repository.
+The common reference covering every dataset, ``docs/EVENT_REFERENCE.md`` in the
+videogames_utils repository, is built from the same pieces by :mod:`.reference`.
 """
 
 from __future__ import annotations
@@ -19,26 +20,19 @@ import argparse
 import collections
 import os.path as op
 import sys
-from glob import glob
+import textwrap
 
-import pandas as pd
-
-from . import vocabulary
+from . import screens, vocabulary
+from .emit import REPETITION
 from .game import Game, load_game
+from .run import census
 
 REFERENCE_URL = ("https://github.com/courtois-neuromod/videogames_utils/blob/main/docs/"
                  "EVENT_REFERENCE.md")
 
-def census(dataset_dir: str) -> collections.Counter:
-    """trial_type counts over every annotated events file of the dataset."""
-    counts: collections.Counter = collections.Counter()
-    for path in glob(op.join(dataset_dir, "sub-*", "ses-*", "func",
-                             "*_desc-annotated_events.tsv")):
-        counts.update(pd.read_csv(path, sep="\t", usecols=["trial_type"])["trial_type"])
-    return counts
 
-
-def _rows_for(entry: vocabulary.EventType, counts: collections.Counter) -> int:
+def rows_for(entry: vocabulary.EventType, counts: collections.Counter) -> int:
+    """Rows of the dataset matching a vocabulary entry."""
     if entry.is_template:
         return sum(n for t, n in counts.items() if vocabulary._matches(entry.name, str(t)))
     return counts.get(entry.name, 0)
@@ -46,50 +40,66 @@ def _rows_for(entry: vocabulary.EventType, counts: collections.Counter) -> int:
 
 def _event_table(game: Game, counts: collections.Counter) -> str:
     lines = ["| Event | Rows | Description |", "|---|---|---|"]
-    for entry in game.vocabulary:
-        n = _rows_for(entry, counts)
+    for entry in sorted(game.vocabulary, key=lambda e: vocabulary.wildcard_name(e.name)):
+        n = rows_for(entry, counts)
         if n:
             rows = f"{n:,}"
         else:
             reason = game.not_emitted.get(entry.name, "never occurred in this dataset")
             rows = f"*none: {reason}*"
         kind = " (durational)" if entry.durational else ""
-        lines.append(f"| `{entry.name}`{kind} | {rows} | {entry.description} |")
+        lines.append(f"| `{vocabulary.wildcard_name(entry.name)}`{kind} | {rows} | "
+                     f"{entry.description} |")
     return "\n".join(lines)
 
 
-def _renamed_table(game: Game) -> str:
-    lines = ["| Former | Now |", "|---|---|"]
-    for old, new in sorted(vocabulary.former_to_new(game.vocabulary).items()):
-        lines.append(f"| `{old}` | `{new}` |")
-    for old, why in vocabulary.RETIRED.items():
-        lines.append(f"| `{old}` | *(dropped)* |")
-    return "\n".join(lines)
+def _names(names) -> str:
+    names = [f"`{n}`" for n in names]
+    return ", ".join(names[:-1]) + " and " + names[-1] if len(names) > 1 else names[0]
+
+
+def _forms(game: Game) -> str:
+    """How the form rows tile the alive frames, in the game's own terms."""
+    if not game.form_states:
+        return ""
+    keys = {vocabulary.wildcard_name(e.name) for e in game.vocabulary}
+    not_alive = sorted(f"Screen/{label}" for label in screens.NOT_ALIVE
+                       if f"Screen/{label}" in keys)
+    forms = sorted(game.form_states)
+    if len(forms) == 1:
+        text = (f"- **The `{forms[0]}` form row** is the game's single form: it tiles the "
+                "frames on which the player is alive in the level")
+    else:
+        text = (f"- **`PlayerState/*` form rows** "
+                f"({', '.join(f.split('/', 1)[1] for f in forms)}) are mutually exclusive "
+                "and tile the frames on which the player is alive in the level")
+    text += (f", i.e. outside {_names(not_alive)}. The other `PlayerState/*` rows are "
+             "overlays that can co-occur with a form.")
+    return textwrap.fill(text, 88, subsequent_indent="  ", break_on_hyphens=False) + "\n"
 
 
 def render(game: Game, counts: collections.Counter) -> str:
     task = game.task
-    n_reps = counts.get("gym-retro_game", 0)
+    n_reps = counts.get(REPETITION, 0)
     n_rows = sum(counts.values())
     n_types = len(counts)
-    fs = game.frame_rate
     return f"""# Annotated event files - {task}
 
 `generate_annotations.py` turns the per-frame RAM dumps written by
 `code/replays/generate_replays.py` (`gamelogs/*_variables.json`) into BIDS event files at
 `sub-*/ses-*/func/*_desc-annotated_events.tsv` for {game.name}.
 
-The event logic is shared by all four CNeuroMod videogame datasets and lives in
-[`videogames_utils.events`](https://github.com/courtois-neuromod/videogames_utils); this
-directory only holds the command-line front end. The machine-readable vocabulary is
-published as `task-{task}_events.json` at the dataset root, and the cross-game reference
-with every RAM address, value and validation figure is
-[`docs/EVENT_REFERENCE.md`]({REFERENCE_URL}) in that repository.
+The game-specific event logic lives in `code/game_specific/`; it is run by the
+game-agnostic pipeline of
+[`videogames_utils.events`](https://github.com/courtois-neuromod/videogames_utils), shared
+by the CNeuroMod videogame datasets. The machine-readable vocabulary is published as
+`task-{task}_events.json` at the dataset root, and the
+[event reference]({REFERENCE_URL}) covers every CNeuroMod videogame dataset.
 
 This dataset: **{n_reps:,} repetitions**, **{n_rows:,} event rows**, **{n_types}
 distinct `trial_type` values**. This file is generated by
-`python -m videogames_utils.events.docs .`; the row counts are a census of the
-files as they stand.
+`python -m videogames_utils.events.docs .`; the row counts are a census of the files as
+they stand.
 
 ## Usage
 
@@ -106,16 +116,15 @@ non-zero on any error. The replay sidecars must exist first
 | Column | Description |
 |---|---|
 | `trial_type` | Event type, from the controlled vocabulary below. |
-| `level` | Level of the repetition the event belongs to. |
 | `onset` | Seconds from the start of the fMRI run. |
 | `duration` | Seconds. 0 for point events. |
 | `frame_start` | First emulator frame of the event, relative to its repetition. |
 | `frame_stop` | Last emulator frame of the event, relative to its repetition. |
 | `button` | Raw controller button behind an `Action/*` event; empty otherwise. |
-| `stim_file` | Path to the repetition's `.bk2` replay. Set on the `gym-retro_game` row only. |
+| `stim_file` | Path to the repetition's `.bk2` replay. Set on the `Repetition` row only. |
 
-Onsets are computed at the console's true frame rate ({fs:.6f} Hz, read from the
-emulator core), not 60.0 Hz. Per-repetition metadata (`phase`, `IndexInRun`,
+Onsets are computed at the console's true frame rate ({game.frame_rate:.6f} Hz, read from
+the emulator core), not 60.0 Hz. Per-repetition metadata (`phase`, `IndexInRun`,
 `IndexGlobal`, `IndexLevel`, `Outcome`) is not repeated on event rows; it lives in the
 repetition's `gamelogs/*_summary.json`, keyed by the `stim_file` of the container row.
 
@@ -124,43 +133,25 @@ repetition's `gamelogs/*_summary.json`, keyed by the `stim_file` of the containe
 - **Point events** have `duration` 0 and mark a moment (a coin, a death, a completion).
 - **Durational events** span a stretch of frames: object visibility, button holds,
   player states and screens.
-- **`gym-retro_game`** is the container: one row per repetition (one `.bk2`), carrying
+- **`Repetition`** is the container: one row per repetition (one `.bk2`), carrying
   `stim_file`. Every other row falls inside exactly one container window.
 - **`Screen/*`** rows partition every repetition: they are contiguous, do not overlap and
   cover it from its first frame to its last, so exactly one is active at any frame.
-  `Screen/Gameplay` is the complement of the non-play screens (title card, death
-  sequence, end-of-level sequence, transitions, game over).
-- **`PlayerState/*` form rows** (Small, Super, Fire and the SMB3 suits; Normal in
-  Shinobi) are mutually exclusive and tile the frames on which the player is alive in the
-  level, i.e. outside `Screen/Death`, `Screen/LevelIntro`, `Screen/GameOver` and
-  `Screen/Map`. The other `PlayerState/*` rows (Star, HitRecovery, Flying, ...) are
-  overlays that can co-occur with a form.
-- Names are hierarchical: the part before the first `/` is the family. `{{...}}` in the
-  table below is filled at generation time with a decoded object name, e.g.
+  `Screen/Gameplay` is the complement of the non-play screens.
+{_forms(game)}- Names are hierarchical: the part before the first `/` is the family. A `*` in the table
+  below is filled at generation time with a decoded object name, e.g.
   `EnemyOnScreen/Goomba`.
 
 ## Event types
 
-Every entry of the vocabulary this game may emit, with the number of rows it has in the
-dataset. An entry with no rows says why.
+Every entry of the vocabulary this game may emit, in alphabetical order, with the number
+of rows it has in the dataset. An entry with no rows says why.
 
 {_event_table(game, counts)}
 
-## Accuracy notes
+## Reference
 
-{game.notes}
-## Renamed from the previous vocabulary
-
-Earlier releases used different `trial_type` names. Analyses filtering on the former
-names need updating; the mapping for this game is:
-
-{_renamed_table(game)}
-
-The former `Powerup_started/*` and `Powerup_expired/*` point events became the
-durational `PlayerState/*` rows (the onset of `PlayerState/Super` is the old
-`Powerup_started/Super`, the end of `PlayerState/Star` the old `Powerup_expired/Star`),
-and `Powerup_started/Small`, emitted on a hit, is the start of a `PlayerState/Small`
-row.
+{game.reference.strip()}
 
 ## Validation
 
@@ -173,8 +164,8 @@ recomputed straight from `_variables.json` by a different route than the generat
 (V1): coin counts against the coin counter, deaths against the lives counter, level
 completion against the summary outcome, enemy track bookkeeping, `Screen/*` rows
 partitioning each repetition and agreeing with the deaths and completions, form rows
-tiling the alive frames, and frame-range bounds. `mario` and `mariostars` can also be
-compared level by level (`cross-port`), since they are the same game on two consoles.
+tiling the alive frames, frame-range bounds, and the game's own checks. Two datasets of
+the same game can also be compared level by level (`cross-port`).
 
 A human video review measures precision and recall per event type:
 

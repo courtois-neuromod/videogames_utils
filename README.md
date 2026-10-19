@@ -19,14 +19,18 @@ python code/annotations/generate_annotations.py -d . --overwrite --validate   # 
 python -m videogames_utils.events.validate_cli check .                          # validation only
 python -m videogames_utils.events.docs .                                        # regenerate code/annotations/README.md
 python -m videogames_utils.events.render_frames . <bk2> 0,118,124 --check player_state   # look at frames
+python -m videogames_utils.events.reference ../mario ../mariostars ../mario3 ../shinobi \
+    -o docs/EVENT_REFERENCE.md                                                 # rebuild the common reference
 ```
 
 Documentation:
 
 - [`docs/EVENT_REFERENCE.md`](docs/EVENT_REFERENCE.md): every event of every game, with
-  the RAM address, value and validation figure behind it.
-- each dataset's `code/annotations/README.md`, generated from its vocabulary with the
-  row count of every event in that dataset.
+  the RAM address, value and validation figure behind it. Generated from each dataset's
+  `code/game_specific/reference.md` and annotated files (`docs/build_reference_pdf.sh`
+  renders the PDF).
+- each dataset's `code/annotations/README.md`, generated from its vocabulary and
+  reference, with the row count of every event in that dataset.
 - each dataset's `task-<task>_events.json` BIDS sidecar.
 
 ## Installation

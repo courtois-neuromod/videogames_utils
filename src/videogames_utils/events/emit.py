@@ -1,6 +1,6 @@
 """Helpers for building BIDS events DataFrames.
 
-Replaces the ~40 lines of identical ``onset``/``duration``/``trial_type``/``level``/
+Replaces the ~40 lines of identical ``onset``/``duration``/``trial_type``/
 ``frame_start``/``frame_stop`` list-building that were copy-pasted into every generator
 function of all four datasets' ``generate_annotations.py``.
 """
@@ -18,12 +18,19 @@ import pandas as pd
 #:   phase, IndexInRun, IndexGlobal, IndexLevel -> already in gamelogs/*_summary.json
 #:   enemy_type                                 -> now the last segment of trial_type
 #:   value                                      -> only carried Enemy_counter, removed
-#: `stim_file` is set on the gym-retro_game container row only; every other event sits
+#: `stim_file` is set on the Repetition container row only; every other event sits
 #: inside exactly one container window, so repeating the path on every row was noise.
 COLUMNS = [
-    "trial_type", "level", "onset", "duration", "frame_start", "frame_stop",
+    "trial_type", "onset", "duration", "frame_start", "frame_stop",
     "button", "stim_file",
 ]
+
+#: trial_type of the container row of a repetition (one .bk2) in the annotated events.
+REPETITION = "Repetition"
+#: The same row in the plain events.tsv written by the task.
+RAW_REPETITION = "gym-retro_game"
+#: Either: for readers that may be given a plain or an annotated events file.
+REPETITION_TYPES = (REPETITION, RAW_REPETITION)
 
 #: Columns stored as nullable integers.
 INT_COLUMNS = ["frame_start", "frame_stop"]
@@ -31,7 +38,7 @@ INT_COLUMNS = ["frame_start", "frame_stop"]
 
 def empty_events() -> pd.DataFrame:
     """An empty events frame with the standard event columns."""
-    return pd.DataFrame(columns=["onset", "duration", "trial_type", "level",
+    return pd.DataFrame(columns=["onset", "duration", "trial_type",
                                  "frame_start", "frame_stop"])
 
 
@@ -42,14 +49,13 @@ class EventAccumulator:
     never divide by a frame rate themselves.
 
     Example:
-        acc = EventAccumulator(level="w1l1", fs=60.0998)
+        acc = EventAccumulator(fs=60.0998)
         acc.add("ItemCollected/Coin", frame)
         acc.add("Enemy_appeared/Goomba", start, stop)
         df = acc.to_frame()
     """
 
-    def __init__(self, level, fs: float, **defaults):
-        self.level = level
+    def __init__(self, fs: float, **defaults):
         self.fs = fs
         self.defaults = defaults
         self._rows: List[dict] = []
@@ -65,7 +71,6 @@ class EventAccumulator:
             "onset": frame_start / self.fs,
             "duration": (stop - frame_start) / self.fs,
             "trial_type": trial_type,
-            "level": self.level,
             "frame_start": int(frame_start),
             "frame_stop": int(stop),
             **self.defaults,
@@ -94,12 +99,12 @@ def finalize(frames: Iterable[pd.DataFrame]) -> pd.DataFrame:
     if not frames:
         return pd.DataFrame()
 
-    # Sort by onset, but keep the gym-retro_game container first among rows that share
+    # Sort by onset, but keep the Repetition container first among rows that share
     # one. LevelStarted sits at frame 0 of a repetition and therefore ties with its own
     # container; if it sorted ahead, consumers that slice between container rows (the
     # videogames_utils GUI does exactly this) would file it under the previous repetition.
     events = pd.concat(frames)
-    events["_container_first"] = (events["trial_type"] != "gym-retro_game").astype(int)
+    events["_container_first"] = (events["trial_type"] != REPETITION).astype(int)
     events = (events.sort_values(by=["onset", "_container_first"], kind="stable")
                     .drop(columns="_container_first")
                     .reset_index(drop=True))
