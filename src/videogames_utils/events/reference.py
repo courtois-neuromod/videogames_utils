@@ -102,8 +102,9 @@ Per-repetition metadata — `phase`, `IndexInRun`, `IndexGlobal`, `IndexLevel` a
 `Outcome` — is **not** repeated on event rows. It lives in the repetition's
 `gamelogs/*_summary.json`, keyed by the `stim_file` on the container row.
 
-Onsets are computed at the console's true frame rate, read from the emulator core rather
-than assumed to be 60 (see the table above).
+Onsets are computed at the rate at which each game was displayed during acquisition
+(see the table above): the emulator's native rate, or the screen's 60 Hz where the task
+paced the game on the display.
 
 ### The container row
 

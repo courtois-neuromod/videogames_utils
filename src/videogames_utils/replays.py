@@ -4,7 +4,7 @@ For every repetition listed in the plain ``func/*_events.tsv`` files, the ``.bk2
 replayed in the emulator and its ``gamelogs/`` outputs are written:
 
     *_variables.json   game variables, one value per frame
-    *_recording.mp4    the replay, with its audio, at the emulator's frame rate
+    *_recording.mp4    the replay, with its audio, at the game's frame rate
     *_lowlevel.npy     luminance, optical flow and audio envelope per frame
     *_summary.json     one record per repetition (see below)
 

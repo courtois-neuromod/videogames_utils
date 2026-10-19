@@ -123,8 +123,8 @@ non-zero on any error. The replay sidecars must exist first
 | `button` | Raw controller button behind an `Action/*` event; empty otherwise. |
 | `stim_file` | Path to the repetition's `.bk2` replay. Set on the `Repetition` row only. |
 
-Onsets are computed at the console's true frame rate ({game.frame_rate:.6f} Hz, read from
-the emulator core), not 60.0 Hz. Per-repetition metadata (`phase`, `IndexInRun`,
+Onsets are computed at the rate at which the game was displayed during acquisition
+({game.frame_rate:.6f} Hz). Per-repetition metadata (`phase`, `IndexInRun`,
 `IndexGlobal`, `IndexLevel`, `Outcome`) is not repeated on event rows; it lives in the
 repetition's `gamelogs/*_summary.json`, keyed by the `stim_file` of the container row.
 
