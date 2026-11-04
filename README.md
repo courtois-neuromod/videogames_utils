@@ -54,26 +54,25 @@ Documentation:
 
 ## Installation
 
-```bash
-pip install git+https://github.com/cneuromod/videogames_utils.git
-```
-
-Or install from source:
+A dataset installs videogames_utils from its own `code/videogames_utils` submodule; see
+the dataset's `code/replays/README.md`. To work on videogames_utils itself, in the exact
+environment the datasets use (Python 3.12):
 
 ```bash
-git clone https://github.com/cneuromod/videogames_utils.git
+git clone https://github.com/courtois-neuromod/videogames_utils.git
 cd videogames_utils
-pip install -e .
+python3.12 -m venv env && source env/bin/activate
+pip install -r requirements.lock
+pip install --no-deps -e .
 ```
 
 ## Requirements
 
-- Python >= 3.9
-- stable-retro
-- numpy
-- Pillow
-- scikit-video
-- opencv-python
+Python 3.12 and the exact package versions of
+[`requirements.lock`](requirements.lock), which `pyproject.toml` pins as well. A dataset's
+replay and annotation scripts check, before they run, that they use its data and code,
+videogames_utils at the commit the dataset records, its `stimuli` and these versions
+(`videogames_utils.environment`).
 
 ## Features
 

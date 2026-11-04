@@ -44,6 +44,7 @@ import pandas as pd
 import stable_retro as retro
 from tqdm import tqdm
 
+from . import environment
 from .events.emit import RAW_REPETITION
 from .events.game import Game, load_game
 from .events.run import n_frames_of
@@ -295,11 +296,18 @@ def main(argv=None, game: Optional[Game] = None) -> int:
                              "integration's data.json has gained variables.")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Display verbose output.")
+    parser.add_argument("--allow-unpinned", action="store_true",
+                        help="Run even if the environment is not the one the dataset pins "
+                             "(its data and code, the videogames_utils submodule, stimuli, "
+                             "requirements.lock); the outputs are then not reproducible.")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING,
                         format="%(message)s", force=True)
+    game = game or load_game(args.datapath)
+    environment.check(environment.code_dataset(game), args.datapath, args.stimuli,
+                      allow=args.allow_unpinned)
     problems = generate_replays(
-        args.datapath, game or load_game(args.datapath), output_dir=args.output,
+        args.datapath, game, output_dir=args.output,
         stimuli_dir=args.stimuli, n_jobs=args.n_jobs, subjects=args.subjects,
         sessions=args.sessions, skip_videos=args.skip_videos,
         skip_variables=args.skip_variables, skip_lowlevel=args.skip_lowlevel,
