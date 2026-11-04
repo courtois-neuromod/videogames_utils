@@ -25,7 +25,7 @@ def strip_first_step(bk2_in:str, bk2_out:str, strip_n_steps:int = 1):
 
 
 def main(path):
-    events = glob.glob(path+'/sub-*/ses-*/func/*_events.tsv')
+    events = glob.glob(path+'/sub-*/ses-*/func/*_run-??_events.tsv')
     for evt in events:
         print(f"process: {evt}")
         evt_df = pd.read_csv(evt, delimiter='\t')
