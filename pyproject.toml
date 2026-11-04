@@ -7,25 +7,29 @@ name = "videogames_utils"
 version = "0.1.0"
 description = "Utilities for CNeuroMod videogame data"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.12,<3.13"
 license = { text = "MIT" }
 authors = [{ name = "CNeuroMod" }]
 dependencies = [
-    "stable-retro",
-    "numpy",
-    "Pillow",
-    "imageio-ffmpeg",
-    "opencv-python",
-    "PyQt6",
-    "pyqtgraph",
-    "pandas",
-    "scipy",
-    "h5py",
-    "nibabel",
-    "nilearn",
-    "matplotlib",
-    "tqdm",
+    "stable-retro==0.9.8",
+    "numpy==2.4.1",
+    "Pillow==11.3.0",
+    "imageio-ffmpeg==0.6.0",
+    "opencv-python==4.13.0.90",
+    "PyQt6==6.10.2",
+    "pyqtgraph==0.14.0",
+    "pandas==3.0.0",
+    "scipy==1.17.0",
+    "h5py==3.15.1",
+    "nibabel==5.3.3",
+    "nilearn==0.13.0",
+    "matplotlib==3.10.8",
+    "tqdm==4.67.1",
+    "packaging==26.0",
 ]
+
+[project.optional-dependencies]
+test = ["pytest==9.1.1", "pytest-check==3.0.3"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

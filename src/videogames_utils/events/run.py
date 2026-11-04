@@ -18,6 +18,7 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
+from .. import environment
 from . import vocabulary
 from .emit import RAW_REPETITION, REPETITION, finalize
 from .game import Game, load_game
@@ -210,8 +211,14 @@ def main(argv=None, game: Optional[Game] = None) -> int:
     parser.add_argument("--validate", action="store_true",
                         help="Run the schema and RAM-invariant checks afterwards and "
                              "exit non-zero if any error is found.")
+    parser.add_argument("--allow-unpinned", action="store_true",
+                        help="Run even if the environment is not the one the dataset pins "
+                             "(its data and code, the videogames_utils submodule, stimuli, "
+                             "requirements.lock); the outputs are then not reproducible.")
     args = parser.parse_args(argv)
     game = game or load_game(args.datapath)
+    environment.check(environment.code_dataset(game), args.datapath,
+                      allow=args.allow_unpinned)
 
     from . import validation  # imports this module
 
