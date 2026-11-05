@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 import pyqtgraph as pg
 
-from .utils import load_variables_json, compute_zscore, GAME_CONFIGS
+from .utils import load_variables_json, compute_zscore
 
 
 class TimeseriesWidget(QWidget):

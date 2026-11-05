@@ -7,6 +7,8 @@ from typing import Optional, List, Dict
 import pandas as pd
 import numpy as np
 
+from ..events.emit import REPETITION_TYPES
+
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QGroupBox, QListWidget, QListWidgetItem
 )
@@ -65,8 +67,9 @@ class EventsWidget(QWidget):
             if self.events_df.empty:
                 self.status_label.setText("No events found for this replay")
             else:
-                # Filter out the gym-retro_game row
-                self.events_df = self.events_df[self.events_df['trial_type'] != 'gym-retro_game']
+                # Filter out the repetition's container row
+                self.events_df = self.events_df[
+                    ~self.events_df['trial_type'].isin(REPETITION_TYPES)]
                 n_events = len(self.events_df)
                 self.status_label.setText(f"Loaded {n_events} events")
 

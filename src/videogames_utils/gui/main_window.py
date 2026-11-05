@@ -19,7 +19,8 @@ from .events_widget import EventsWidget
 from .glassbrain_widget import GlassBrainWidget
 from .physio_widget import PhysioWidget
 from .controller_widget import ControllerWidget
-from .utils import detect_game_from_filename, find_annotated_events_for_replay
+from ..events.emit import REPETITION_TYPES
+from .utils import find_annotated_events_for_replay
 import pandas as pd
 
 
@@ -409,8 +410,8 @@ class ReplayVisualizerApp(QMainWindow):
         try:
             df = pd.read_csv(events_path, sep='\t')
 
-            # Find the gym-retro_game row that references this .bk2 file
-            game_row_mask = (df['trial_type'] == 'gym-retro_game') & \
+            # Find the repetition row that references this .bk2 file
+            game_row_mask = (df['trial_type'].isin(REPETITION_TYPES)) & \
                            (df['stim_file'].str.contains(bk2_filename, na=False))
 
             if not game_row_mask.any():

@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import pyqtSignal
 
-from .utils import get_replay_info, detect_game_from_filename, get_replays_from_events_files
+from .utils import get_replay_info, get_replays_from_events_files
 
 
 class FileBrowser(QWidget):
