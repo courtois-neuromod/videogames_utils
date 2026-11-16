@@ -6,6 +6,8 @@ rewrites an existing entry.
 
     python -m videogames_utils.events.apply_ram /path/to/mario --dry-run
     python -m videogames_utils.events.apply_ram /path/to/mario
+
+The candidates are the dataset's own (``Game.ram_candidates``).
 """
 
 from __future__ import annotations
@@ -15,46 +17,14 @@ import json
 import os.path as op
 import sys
 
-from . import ram
-
-#: dataset directory basename -> (game, verified candidate list)
-VERIFIED = {
-    "mario": ("SuperMarioBros-Nes", ram.SMB1_CANDIDATES),
-    "mario3": ("SuperMarioBros3-Nes", ram.SMB3_CANDIDATES + ram.SMB3_UNVERIFIED),
-    "mariostars": ("SuperMarioAllStars-Snes", ram.SMAS_CANDIDATES),
-    "shinobi": ("ShinobiIIIReturnOfTheNinjaMaster-Genesis", ram.SHINOBI_CANDIDATES),
-}
-
-#: Existing data.json keys whose names are wrong, with the disassembly's actual symbol.
-#: The addresses are correct, so the keys are kept as aliases (renaming them would break
-#: the shipped generate_annotations.py); this only records the truth for documentation.
-MISLABELLED = {
-    "mariostars": {
-        "player_powerup": "($0578) NOT the power-up state -- holds unrelated values such "
-                          "as 82 and 107; use player_status ($0756)",
-        "star_power_timer": "($0553) NOT the star timer -- holds constants, never counts "
-                            "down; use star_timer ($07AF)",
-    },
-    "mario3": {
-        "killed": "Map_ReturnStatus ($0713) - NOT a kill flag; unused by the generators",
-        "mario_form": "Player_QueueSuit ($0578) - queued suit change, not the current form",
-        "invisibility_timer": "Player_FlashInv ($0552) - post-hit flashing, not invisibility",
-        "invincibility_timer": "Player_StarInv ($0553) - correct meaning, star invincibility",
-        "stomp_counter": "Kill_Tally ($05F4)",
-        "timer_subframe": "Level_TimerTick ($05F1)",
-        "object_set": "Level_Tileset ($070A)",
-        "p_meter": "Player_Power ($03DD)",
-        "powerup": "Player_Suit ($00ED) - the actual current form",
-    },
-}
-
+from .game import load_game
 
 def apply(dataset_dir: str, dry_run: bool = False) -> int:
-    name = op.basename(op.abspath(dataset_dir.rstrip("/")))
-    if name not in VERIFIED:
-        print(f"nothing to apply for {name!r} (verified games: {sorted(VERIFIED)})")
+    spec = load_game(dataset_dir)
+    name, game, candidates = spec.task, spec.game_id, spec.ram_candidates
+    if not candidates:
+        print(f"nothing to apply for {name!r}")
         return 0
-    game, candidates = VERIFIED[name]
     path = op.join(dataset_dir, "stimuli", game, "data.json")
     if not op.exists(path):
         print(f"ERROR: {path} does not exist")

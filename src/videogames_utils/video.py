@@ -41,10 +41,9 @@ def make_mp4(
 ) -> None:
     """Create an MP4 file from a list of frames, with optional audio multiplexing.
 
-    ``fps`` is required and should be the emulator's native frame rate (see
-    ``videogames_utils.events.emit.FRAME_RATES``). The emulator's audio already plays at
-    that rate, so writing the frames at a nominal 60 fps makes the video stream drift
-    away from its own audio track and from the events timeline.
+    ``fps`` is required and should be the rate at which the game was displayed during
+    acquisition (``Game.frame_rate``); writing the frames at another rate makes the video
+    stream drift away from the events timeline.
 
     Frames are piped to ffmpeg directly rather than through moviepy, which rounds the
     frame rate to two decimals and resamples frames by timestamp, silently dropping the
