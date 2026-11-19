@@ -143,8 +143,15 @@ def display_order(name: str) -> tuple:
 COLUMN_DESCRIPTIONS: Dict[str, dict] = {
     "onset": {"Description": "Onset of the event, in seconds from the start of the run.",
               "Units": "s"},
-    "duration": {"Description": "Duration of the event in seconds. Zero for point events.",
+    "duration": {"Description": "Duration of the event in seconds. Zero for point events. "
+                                "On a Repetition row, the length of its .bk2 replay: its "
+                                "frame count divided by the frame rate; n/a when the .bk2 "
+                                "is missing.",
                  "Units": "s"},
+    "logged_duration": {"Description": "Duration of the repetition logged by the task, from "
+                                       "the plain events.tsv. Set on the Repetition row "
+                                       "only, including when the .bk2 is missing.",
+                        "Units": "s"},
     "onset_in_video": {"Description": "Onset of the event in its repetition's replay video "
                                       "(gamelogs/*_recording.mp4, named after the "
                                       "repetition's stim_file), in seconds from the video's "
@@ -165,7 +172,7 @@ COLUMN_DESCRIPTIONS: Dict[str, dict] = {
                                  "exactly one of those windows. Per-repetition metadata "
                                  "(phase, IndexInRun, IndexGlobal, IndexLevel, Outcome) "
                                  "lives in the matching gamelogs/*_summary.json. "
-                                 "'Missing file' marks a repetition whose .bk2 was "
+                                 "'Missing File' marks a repetition whose .bk2 was "
                                  "lost; its row is kept, with no events inside it."},
 }
 
@@ -281,7 +288,8 @@ def _lower_article(text: str) -> str:
 
 def write_bids_sidecar(vocabulary: Sequence[EventType], trial_types: Iterable[str] = (),
                        type_descriptions: Optional[Mapping[str, str]] = None,
-                       buttons: Optional[Mapping[str, str]] = None) -> dict:
+                       buttons: Optional[Mapping[str, str]] = None,
+                       logged_duration: bool = False) -> dict:
     """Build the ``task-<task>_events.json`` contents for a game's vocabulary.
 
     ``trial_type`` is described under the BIDS ``Levels``, one entry per value present
@@ -289,8 +297,11 @@ def write_bids_sidecar(vocabulary: Sequence[EventType], trial_types: Iterable[st
     family with a list of values per qualifier, is ``events_vocabulary.json``, which
     :mod:`.reference` writes for every game at once. ``buttons`` (raw button -> the
     ``Action/*`` event it produces) becomes the ``Levels`` of the ``button`` column.
+    ``logged_duration`` is described only for a game that keeps it
+    (``Game.logged_duration``).
     """
-    sidecar = {k: dict(v) for k, v in COLUMN_DESCRIPTIONS.items()}
+    sidecar = {k: dict(v) for k, v in COLUMN_DESCRIPTIONS.items()
+               if logged_duration or k != "logged_duration"}
     sidecar["trial_type"]["Levels"] = levels(vocabulary, trial_types, type_descriptions)
     if buttons:
         sidecar["button"]["Description"] = (

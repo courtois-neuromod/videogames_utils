@@ -64,6 +64,16 @@ def _game_sections(games: Sequence[Game]) -> str:
     return "\n---\n\n".join(sections)
 
 
+def _logged_row(games: Sequence[Game]) -> str:
+    """Column-table row of ``logged_duration``, naming the datasets that carry it."""
+    tasks = [f"`{g.task}`" for g in games if g.logged_duration]
+    if not tasks:
+        return ""
+    return (f"| `logged_duration` | {', '.join(tasks)} only: the duration of the repetition "
+            "logged by the task, from the plain `_events.tsv`. `Repetition` row only, "
+            "including when its `.bk2` is missing. |\n")
+
+
 def render(games: Sequence[Game], counts: Dict[str, collections.Counter]) -> str:
     return f"""# Event annotation reference — CNeuroMod videogame datasets
 
@@ -94,11 +104,11 @@ Every segment is UpperCamelCase (`PlayerState/HitRecovery`).
 |---|---|
 | `trial_type` | The event, from the game's controlled vocabulary. |
 | `onset` | Seconds from the start of the fMRI run. |
-| `duration` | Seconds; 0 for point events. |
-| `onset_in_video` | Seconds from the first frame of the repetition's replay video (`gamelogs/*_recording.mp4`). |
+| `duration` | Seconds; 0 for point events. On a `Repetition` row, the length of its `.bk2` replay. |
+{_logged_row(games)}| `onset_in_video` | Seconds from the first frame of the repetition's replay video (`gamelogs/*_recording.mp4`). |
 | `frame_start`, `frame_stop` | Emulator frames, relative to the repetition. |
 | `button` | Raw controller button behind an `Action/*` event; `n/a` otherwise. |
-| `stim_file` | Path to the `.bk2`. **Set on the `Repetition` row only** — every other event sits inside exactly one of those windows. A repetition whose `.bk2` was lost keeps its row, with `stim_file` = `Missing file`, the onset (and, where the task logged it, the duration) from the plain `_events.tsv`, `n/a` frames and no events inside it. |
+| `stim_file` | Path to the `.bk2`. **Set on the `Repetition` row only** — every other event sits inside exactly one of those windows. A repetition whose `.bk2` was lost keeps its row, with `stim_file` = `Missing File`, the onset from the plain `_events.tsv`, `n/a` `duration` and frames, and no events inside it. |
 
 Per-repetition metadata — `phase`, `IndexInRun`, `IndexGlobal`, `IndexLevel` and
 `Outcome` — is **not** repeated on event rows. It lives in the repetition's

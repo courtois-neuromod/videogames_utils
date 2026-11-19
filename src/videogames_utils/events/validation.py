@@ -34,7 +34,7 @@ import pandas as pd
 from . import screens, vocabulary
 from .emit import COLUMNS, REPETITION
 from .game import Game
-from .run import n_frames_of
+from .run import MISSING_FILE, is_missing, n_frames_of
 
 #: Columns every annotated events file must have.
 REQUIRED_COLUMNS = ["trial_type", "onset", "duration", "onset_in_video", "frame_start",
@@ -157,8 +157,10 @@ def check_schema(df: pd.DataFrame, game: Game, path: str, report: Report) -> Non
     if reps.empty:
         report.add("V0", "no repetition rows", path, f"no {CONTAINER} rows")
         return
+    check_repetition_rows(reps, game, path, report)
+    # A repetition whose .bk2 is missing has no duration, hence no window.
     windows = [(float(r.onset), float(r.onset) + float(r.duration))
-               for r in reps.itertuples()]
+               for r in reps.itertuples() if pd.notna(r.duration)]
 
     # Repetition windows must not overlap: with stim_file carried only by the container
     # row, an overlap makes it impossible to say which repetition an event belongs to.
@@ -177,6 +179,36 @@ def check_schema(df: pd.DataFrame, game: Game, path: str, report: Report) -> Non
     if outside:
         report.add("V0", "events outside every repetition window", path,
                    f"{outside}/{len(others)} rows")
+
+
+def check_repetition_rows(reps: pd.DataFrame, game: Game, path: str, report: Report) -> None:
+    """V0: the Repetition rows' ``stim_file``, ``duration`` and ``logged_duration``.
+
+    ``duration`` is the length of the ``.bk2``: set when it is there, n/a when it is
+    missing, which ``stim_file`` marks exactly as ``Missing File``. ``logged_duration``
+    is present only for a game that keeps it (``Game.logged_duration``).
+    """
+    stims = reps["stim_file"]
+    lost = stims.map(is_missing)
+    duration = reps["duration"].astype(float)
+
+    misspelled = stims[lost & (stims != MISSING_FILE)]
+    if len(misspelled):
+        report.add("V0", "missing .bk2 not marked 'Missing File'", path,
+                   f"{len(misspelled)} rows: {sorted(set(map(str, misspelled)))[:3]}")
+    if duration[~lost].isna().any():
+        report.add("V0", "repetition without duration", path,
+                   f"{int(duration[~lost].isna().sum())} rows with a .bk2 and no duration")
+    if duration[lost].notna().any():
+        report.add("V0", "missing .bk2 with a duration", path,
+                   f"{int(duration[lost].notna().sum())} rows")
+
+    if game.logged_duration and "logged_duration" not in reps.columns:
+        report.add("V0", "missing logged_duration column", path,
+                   "the game keeps the logged duration (Game.logged_duration)")
+    elif not game.logged_duration and "logged_duration" in reps.columns:
+        report.add("V0", "unexpected logged_duration column", path,
+                   "the game does not keep the logged duration (Game.logged_duration)")
 
 
 # ------------------------------------------------------------------------------- V1
