@@ -8,6 +8,10 @@ replayed in the emulator and its ``gamelogs/`` outputs are written:
     *_lowlevel.npy     luminance, optical flow and audio envelope per frame
     *_summary.json     one record per repetition (see below)
 
+``--outputs`` writes only some of them. The emulator runs only for videos, variables or
+low-level features; ``--outputs summary`` alone rebuilds the summaries from the existing
+``_variables.json``.
+
 The game-specific parts come from the dataset's :class:`~.events.game.Game`: the
 scenario, the variables' corrections, the outcome, the protocol phases and the game's own
 summary fields. Each dataset's ``code/replays/generate_replays.py`` only calls
@@ -18,9 +22,11 @@ Every ``_summary.json`` holds the same common fields, followed by the game's own
     Subject, Session, Run, Level   BIDS labels (``sub-01``, ``ses-002``, ``run-01``) and
                                    the ``level-`` entity of the ``.bk2``
     Bk2File                        the ``.bk2``, relative to the dataset root
-    IndexInRun                     position among the run's repetitions with a ``.bk2``
+    IndexInRun                     position among the run's repetitions
     IndexGlobal, IndexLevel        position among the subject's repetitions, overall and
                                    at this level, in the order they were played
+                                   (all three count the repetitions whose ``.bk2`` is
+                                   missing, so they have gaps where one is)
     Phase                          the protocol phase, or null
     Outcome                        how the repetition ended
     Duration, FrameCount           length of the replay, in seconds and frames
@@ -37,7 +43,7 @@ import os
 import os.path as op
 import re
 import sys
-from typing import List, Optional
+from typing import Iterable, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -68,6 +74,11 @@ def collect_repetitions(dataset_dir: str) -> pd.DataFrame:
     ``level-`` entity), ``events_level`` (the ``level`` of its events.tsv row),
     ``run_levels`` (distinct levels in the run), ``idx_in_run``, ``global_idx`` and
     ``level_idx``.
+
+    The indices count every repetition of the events.tsv, including those whose
+    ``.bk2`` is missing (``stim_file`` is not a ``.bk2``), which are then left out of the
+    DataFrame. A missing repetition's level is the ``.bk2`` level that goes with its
+    events.tsv ``level`` in the repetitions that have one.
     """
     rows = []
     for root, _, files in sorted(os.walk(dataset_dir)):
@@ -84,19 +95,20 @@ def collect_repetitions(dataset_dir: str) -> pd.DataFrame:
                 continue
             if "trial_type" not in events or "stim_file" not in events:
                 continue
-            run = "run-" + _entities(name).get("run", "")
+            file_entities = _entities(name)
+            run = "run-" + file_entities.get("run", "")
             run_levels = events["level"].dropna().nunique() if "level" in events else 0
             reps = events[events["trial_type"] == RAW_REPETITION]
-            reps = reps[reps["stim_file"].apply(
-                lambda s: isinstance(s, str) and s.endswith(".bk2"))]
             for idx_in_run, (_, rep) in enumerate(reps.iterrows()):
-                bk2 = _entities(rep["stim_file"])
+                stim = rep["stim_file"]
+                present = isinstance(stim, str) and stim.endswith(".bk2")
+                entities = _entities(stim) if present else file_entities
                 rows.append({
-                    "bk2_file": rep["stim_file"],
-                    "subject": "sub-" + bk2.get("sub", ""),
-                    "session": "ses-" + bk2.get("ses", ""),
+                    "bk2_file": stim if present else None,
+                    "subject": "sub-" + entities.get("sub", ""),
+                    "session": "ses-" + entities.get("ses", ""),
                     "run": run,
-                    "level": bk2.get("level"),
+                    "level": entities.get("level") if present else None,
                     "events_level": rep.get("level"),
                     "run_levels": run_levels,
                     "idx_in_run": idx_in_run,
@@ -104,11 +116,35 @@ def collect_repetitions(dataset_dir: str) -> pd.DataFrame:
     columns = ["bk2_file", "subject", "session", "run", "level", "events_level",
                "run_levels", "idx_in_run"]
     reps = pd.DataFrame(rows, columns=columns)
+    present = reps["bk2_file"].notna()
+    _level_missing(reps, present)
     reps = reps.sort_values(["subject", "session", "run", "idx_in_run"])
     reps["global_idx"] = reps.groupby("subject").cumcount()
     reps = reps.sort_values(["subject", "level", "session", "run", "idx_in_run"])
     reps["level_idx"] = reps.groupby(["subject", "level"]).cumcount()
+    reps = reps[reps["bk2_file"].notna()]
     return reps.sort_values(["subject", "global_idx"]).reset_index(drop=True)
+
+
+def _level_missing(reps: pd.DataFrame, present: pd.Series) -> None:
+    """Give the repetitions without a ``.bk2`` the level of the ones that have one.
+
+    The ``.bk2`` level that goes with each events.tsv ``level`` is read from the
+    repetitions that have both. A missing repetition whose events.tsv level has no
+    single such ``.bk2`` level is left without one, so it does not count in IndexLevel.
+    """
+    pairs = reps[present].dropna(subset=["events_level", "level"])
+    pairs = pairs.groupby("events_level")["level"].unique()
+    mapping = {events_level: levels[0] for events_level, levels in pairs.items()
+               if len(levels) == 1}
+    missing = ~present
+    reps.loc[missing, "level"] = reps.loc[missing, "events_level"].map(mapping)
+    unmapped = reps[missing & reps["level"].isna()]
+    if len(unmapped):
+        logging.warning(
+            f"{len(unmapped)} repetition(s) without a .bk2 have no known level and do "
+            f"not count in IndexLevel; events.tsv levels: "
+            f"{sorted(unmapped['events_level'].astype(str).unique())}")
 
 
 def output_paths(output_dir: str, bk2_file: str) -> dict:
@@ -118,13 +154,16 @@ def output_paths(output_dir: str, bk2_file: str) -> dict:
             "variables": base + "_variables.json", "lowlevel": base + "_lowlevel.npy"}
 
 
+#: The outputs ``--outputs`` can choose, and their key in :func:`output_paths`.
+OUTPUTS = {"videos": "mp4", "variables": "variables", "lowlevel": "lowlevel",
+           "summary": "json"}
+#: The outputs that need the emulator; the summary alone is made from the variables.
+EMULATED = ("videos", "variables", "lowlevel")
+
+
 def _missing_outputs(paths: dict, settings: dict) -> List[str]:
-    missing = [] if op.exists(paths["json"]) else ["json"]
-    for key, skip in (("mp4", "skip_videos"), ("variables", "skip_variables"),
-                      ("lowlevel", "skip_lowlevel")):
-        if not settings[skip] and not op.exists(paths[key]):
-            missing.append(key)
-    return missing
+    return [output for output in settings["outputs"]
+            if not op.exists(paths[OUTPUTS[output]])]
 
 
 def summarize(game: Game, rep: dict, repvars: dict) -> dict:
@@ -168,6 +207,9 @@ def process_repetition(rep: dict, settings: dict) -> Optional[str]:
         logging.info(f"Skipping (all outputs exist): {rep['bk2_file']}")
         return None
     logging.info(f"Processing {rep['bk2_file']} (missing: {', '.join(missing)})")
+    outputs = settings["outputs"]
+    if not any(output in outputs for output in EMULATED):
+        return _summary_from_variables(game, rep, paths)
     bk2_path = op.join(settings["dataset_dir"], rep["bk2_file"])
     if not op.exists(bk2_path):
         logging.error(f"File not found: {bk2_path}")
@@ -187,13 +229,13 @@ def process_repetition(rep: dict, settings: dict) -> Optional[str]:
         repvars = game.process_variables(repvars)
 
     os.makedirs(op.dirname(paths["json"]), exist_ok=True)
-    if not settings["skip_videos"]:
+    if "videos" in outputs:
         make_mp4(frames, paths["mp4"], audio=audio, sample_rate=audio_rate,
                  fps=game.frame_rate)
-    if not settings["skip_variables"]:
+    if "variables" in outputs:
         with open(paths["variables"], "w") as handle:
             json.dump(repvars, handle)
-    if not settings["skip_lowlevel"]:
+    if "lowlevel" in outputs:
         np.save(paths["lowlevel"], {
             "luminance": compute_luminance(frames),
             "optical_flow": compute_optical_flow(frames),
@@ -201,12 +243,29 @@ def process_repetition(rep: dict, settings: dict) -> Optional[str]:
                 audio, sample_rate=audio_rate, frame_rate=game.frame_rate,
                 frame_count=len(frames)),
         })
-    with open(paths["json"], "w") as handle:
-        json.dump(summarize(game, rep, repvars), handle)
+    if "summary" in outputs:
+        with open(paths["json"], "w") as handle:
+            json.dump(summarize(game, rep, repvars), handle)
 
     del frames, audio, repvars
     gc.collect()
     return problem
+
+
+def _summary_from_variables(game: Game, rep: dict, paths: dict) -> None:
+    """Write a repetition's ``_summary.json`` from its existing ``_variables.json``.
+
+    The saved variables are the ones the game's ``process_variables`` already corrected,
+    so the summary is the same as one made after replaying the ``.bk2``.
+    """
+    if not op.exists(paths["variables"]):
+        logging.error(f"No _variables.json to make the summary from: {paths['variables']}")
+        return None
+    with open(paths["variables"]) as handle:
+        repvars = json.load(handle)
+    with open(paths["json"], "w") as handle:
+        json.dump(summarize(game, rep, repvars), handle)
+    return None
 
 
 def _process(task) -> Optional[str]:
@@ -219,13 +278,14 @@ def _process(task) -> Optional[str]:
 def generate_replays(dataset_dir: str, game: Game, output_dir: Optional[str] = None,
                      stimuli_dir: Optional[str] = None, n_jobs: int = 1,
                      subjects: Optional[List[str]] = None,
-                     sessions: Optional[List[str]] = None, skip_videos: bool = False,
-                     skip_variables: bool = False, skip_lowlevel: bool = False,
+                     sessions: Optional[List[str]] = None,
+                     outputs: Iterable[str] = tuple(OUTPUTS),
                      force: bool = False) -> List[str]:
     """Replay every repetition of a dataset and write its outputs.
 
     Indices and phases are computed over the whole dataset, then the repetitions are
-    filtered by ``subjects`` and ``sessions``. Each repetition is replayed in a fresh
+    filtered by ``subjects`` and ``sessions``. Only the ``outputs`` named (keys of
+    :data:`OUTPUTS`) are written. Each repetition is replayed in a fresh
     worker process, which is the only reliable way to release the emulator's memory.
 
     Returns:
@@ -236,8 +296,7 @@ def generate_replays(dataset_dir: str, game: Game, output_dir: Optional[str] = N
         "dataset_dir": dataset_dir,
         "output_dir": op.abspath(output_dir or dataset_dir),
         "stimuli_dir": op.abspath(stimuli_dir or op.join(dataset_dir, "stimuli")),
-        "skip_videos": skip_videos, "skip_variables": skip_variables,
-        "skip_lowlevel": skip_lowlevel, "force": force,
+        "outputs": _check_outputs(outputs), "force": force,
     }
     reps = collect_repetitions(dataset_dir)
     reps["phase"] = list(game.phases(reps)) if game.phases is not None else None
@@ -259,6 +318,14 @@ def generate_replays(dataset_dir: str, game: Game, output_dir: Optional[str] = N
         problems = list(tqdm(pool.imap(_process, tasks), total=len(tasks),
                              desc="Processing files"))
     return [p for p in problems if p]
+
+
+def _check_outputs(outputs: Iterable[str]) -> tuple:
+    outputs = tuple(dict.fromkeys(outputs))
+    unknown = [output for output in outputs if output not in OUTPUTS]
+    if unknown or not outputs:
+        raise ValueError(f"outputs must be among {list(OUTPUTS)}, got {list(outputs)}")
+    return outputs
 
 
 def report_done_problems(problems: List[str]) -> None:
@@ -285,12 +352,11 @@ def main(argv=None, game: Optional[Game] = None) -> int:
                         help="Subjects to process, e.g. sub-01 sub-02.")
     parser.add_argument("--sessions", "-ses", nargs="+", default=None,
                         help="Sessions to process, e.g. ses-001 ses-002.")
-    parser.add_argument("--skip_videos", action="store_true",
-                        help="Do not write the _recording.mp4 files.")
-    parser.add_argument("--skip_variables", action="store_true",
-                        help="Do not write the _variables.json files.")
-    parser.add_argument("--skip_lowlevel", action="store_true",
-                        help="Do not write the _lowlevel.npy files.")
+    parser.add_argument("--outputs", nargs="+", choices=list(OUTPUTS),
+                        default=list(OUTPUTS),
+                        help="The outputs to write (default: all). The emulator runs "
+                             "only for videos, variables or lowlevel; summary alone is "
+                             "made from the existing _variables.json.")
     parser.add_argument("--force", action="store_true",
                         help="Regenerate outputs that already exist. Needed when the "
                              "integration's data.json has gained variables.")
@@ -309,9 +375,7 @@ def main(argv=None, game: Optional[Game] = None) -> int:
     problems = generate_replays(
         args.datapath, game, output_dir=args.output,
         stimuli_dir=args.stimuli, n_jobs=args.n_jobs, subjects=args.subjects,
-        sessions=args.sessions, skip_videos=args.skip_videos,
-        skip_variables=args.skip_variables, skip_lowlevel=args.skip_lowlevel,
-        force=args.force)
+        sessions=args.sessions, outputs=args.outputs, force=args.force)
     report_done_problems(problems)
     return 0
 
