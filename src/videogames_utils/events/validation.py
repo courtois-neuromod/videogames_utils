@@ -583,14 +583,16 @@ def check_bold_fit(df: pd.DataFrame, path: str, report: Report) -> None:
     """V0: the repetitions of a run end within its BOLD.
 
     The BOLD length is ``dcmmeta_shape[-1] * RepetitionTime`` from the run's
-    ``_bold.json``. A repetition ending past it points at a mispaired run, or a run cut
-    at the scanner's volume limit; it is a warning because such runs are known in every
-    dataset.
+    ``_bold.json``, or its ``_part-mag_bold.json`` when the run was saved as magnitude and
+    phase. A repetition ending past it points at a mispaired run, or a run cut at the
+    scanner's volume limit; it is a warning because such runs are known in every dataset.
     """
-    bold_json = path.replace("_desc-annotated_events.tsv", "_bold.json")
-    if not op.exists(bold_json):
-        report.add("V0", "no BOLD sidecar", path, f"{op.basename(bold_json)} not found",
-                   "warning")
+    candidates = [path.replace("_desc-annotated_events.tsv", suffix)
+                  for suffix in ("_bold.json", "_part-mag_bold.json")]
+    bold_json = next((c for c in candidates if op.exists(c)), None)
+    if bold_json is None:
+        report.add("V0", "no BOLD sidecar", path,
+                   f"none of {[op.basename(c) for c in candidates]} found", "warning")
         return
     with open(bold_json) as handle:
         sidecar = json.load(handle)
