@@ -6,6 +6,9 @@ V0  schema and controlled vocabulary -- structural correctness of the TSVs
 V1  invariants re-derived from the raw RAM by a *different* route than the generator
 V2  enemy rosters compared level by level between two datasets of the same game
 
+Across the dataset, V0 also checks that every ``.bk2`` in ``gamelogs/`` is the replay of
+exactly one repetition, and that the repetitions of a run fit in its BOLD.
+
 The point of V1 is that it must not reuse the generator's own logic: a check that calls
 the same helper the generator called proves nothing. Each invariant here recomputes its
 quantity straight from ``_variables.json``.
@@ -472,19 +475,24 @@ def enemy_roster(events: pd.DataFrame) -> collections.Counter:
 
 def validate_dataset(dataset_dir: str, game: Game, report: Optional[Report] = None,
                      limit: Optional[int] = None, with_invariants: bool = True) -> Report:
-    """Run V0 (and optionally V1) over a dataset's annotated events files."""
+    """Run V0 (and optionally V1) over a dataset's annotated events files.
+
+    The ``.bk2`` checks of :func:`check_bk2_files` need every events file, so they are
+    skipped when ``limit`` is given.
+    """
     report = report or Report()
     pattern = op.join(dataset_dir, "sub-*", "ses-*", "func",
                       "*_desc-annotated_events.tsv")
     paths = sorted(glob(pattern))
     if limit:
         paths = paths[:limit]
+    referenced = collections.Counter()
     for path in paths:
         df = pd.read_csv(path, sep="\t")
         check_schema(df, game, path, report)
-        if not with_invariants:
-            continue
-        if "stim_file" not in df.columns:
+        check_bold_fit(df, path, report)
+        referenced.update(_bk2_files(df))
+        if not with_invariants or "stim_file" not in df.columns:
             continue
         for stim, window in _repetition_windows(df):
             if not isinstance(stim, str):
@@ -500,7 +508,75 @@ def validate_dataset(dataset_dir: str, game: Game, report: Optional[Report] = No
                 with open(sum_path) as f:
                     summary = json.load(f)
             check_invariants(window, repvars, game, summary, stim, report)
+    if not limit:
+        check_bk2_files(dataset_dir, referenced, report)
     return report
+
+
+def _bk2_files(df: pd.DataFrame) -> List[str]:
+    """The ``.bk2`` named by the container rows of an annotated events file."""
+    if "stim_file" not in df.columns:
+        return []
+    stims = df.loc[df["trial_type"] == CONTAINER, "stim_file"]
+    return [s for s in stims if isinstance(s, str) and s.endswith(".bk2")]
+
+
+def check_bk2_files(dataset_dir: str, referenced: collections.Counter,
+                    report: Report) -> None:
+    """V0: every ``.bk2`` in ``gamelogs/`` is the replay of exactly one repetition.
+
+    ``referenced`` counts the repetitions naming each ``.bk2``. A ``.bk2`` no repetition
+    names is a play the events do not account for, or a stray copy; one named twice, or
+    named but absent, points at a wrong ``stim_file``. Skipped when the dataset has no
+    ``.bk2`` (outputs written away from the dataset).
+    """
+    on_disk = {op.relpath(p, dataset_dir) for p in
+               glob(op.join(dataset_dir, "sub-*", "ses-*", "gamelogs", "*.bk2"))}
+    if not on_disk:
+        return
+    report.checked["bk2 files"] = len(on_disk)
+    for bk2 in sorted(on_disk - set(referenced)):
+        report.add("V0", "bk2 not referenced by any repetition", bk2,
+                   "no Repetition row has it as stim_file")
+    for bk2, count in sorted(referenced.items()):
+        if bk2 not in on_disk:
+            report.add("V0", "referenced bk2 not in gamelogs", bk2,
+                       "a Repetition row names it but the file is absent")
+        if count > 1:
+            report.add("V0", "bk2 referenced more than once", bk2,
+                       f"stim_file of {count} Repetition rows")
+
+
+def check_bold_fit(df: pd.DataFrame, path: str, report: Report) -> None:
+    """V0: the repetitions of a run end within its BOLD.
+
+    The BOLD length is ``dcmmeta_shape[-1] * RepetitionTime`` from the run's
+    ``_bold.json``. A repetition ending past it points at a mispaired run, or a run cut
+    at the scanner's volume limit; it is a warning because such runs are known in every
+    dataset.
+    """
+    bold_json = path.replace("_desc-annotated_events.tsv", "_bold.json")
+    if not op.exists(bold_json):
+        report.add("V0", "no BOLD sidecar", path, f"{op.basename(bold_json)} not found",
+                   "warning")
+        return
+    with open(bold_json) as handle:
+        sidecar = json.load(handle)
+    shape, tr = sidecar.get("dcmmeta_shape"), sidecar.get("RepetitionTime")
+    if not shape or not tr:
+        report.add("V0", "no BOLD length", bold_json,
+                   "dcmmeta_shape or RepetitionTime missing", "warning")
+        return
+    reps = df[df["trial_type"] == CONTAINER]
+    if reps.empty:
+        return
+    report.checked["runs"] += 1
+    bold_length = shape[-1] * tr
+    end = float((reps["onset"] + reps["duration"]).max())
+    if end > bold_length:
+        report.add("V0", "repetitions end past the BOLD", path,
+                   f"last repetition ends at {end:.2f} s, BOLD is {bold_length:.2f} s "
+                   f"(+{end - bold_length:.2f} s)", "warning")
 
 
 def _repetition_windows(df: pd.DataFrame):
