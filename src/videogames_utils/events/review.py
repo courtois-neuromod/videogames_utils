@@ -31,6 +31,7 @@ import pandas as pd
 
 from .emit import REPETITION
 from .game import Game, load_game
+from .run import is_missing
 
 #: Seconds of context on either side of the event.
 DEFAULT_PAD = 2.0
@@ -320,7 +321,7 @@ def build_recall_windows(dataset_dir: str, out_dir: str, n_windows: int = 20,
             continue
         rep = reps.iloc[rng.randrange(len(reps))]
         stim = rep["stim_file"]
-        if not isinstance(stim, str):
+        if is_missing(stim):
             continue
         duration = float(rep["duration"])
         if duration <= seconds:

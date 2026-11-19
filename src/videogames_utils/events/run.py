@@ -24,8 +24,13 @@ from .emit import RAW_REPETITION, REPETITION, finalize
 from .game import Game, load_game
 
 
-#: stim_file value of a repetition whose .bk2 was lost.
-MISSING_FILE = "Missing file"
+#: stim_file value of a repetition whose .bk2 was lost, as the task writes it.
+MISSING_FILE = "Missing File"
+
+
+def is_missing(stim) -> bool:
+    """True if a ``stim_file`` value marks a lost ``.bk2`` (any capitalisation, or empty)."""
+    return not isinstance(stim, str) or stim.strip().lower() in ("", "missing file")
 
 
 def n_frames_of(repvars: dict) -> int:
@@ -51,18 +56,24 @@ def annotate_run(events_path: str, dataset_dir: str, game: Game) -> pd.DataFrame
         return pd.DataFrame()
     missing: List[str] = []
 
+    def logged(rep) -> dict:
+        # The duration the task logged, where the game keeps it (Game.logged_duration).
+        if not game.logged_duration:
+            return {}
+        return {"logged_duration": pd.to_numeric(rep.get("duration"), errors="coerce")}
+
     frames: List[pd.DataFrame] = []
 
     for _, rep in reps.iterrows():
         stim = rep.get("stim_file")
-        # The datasets use a "Missing file" sentinel with inconsistent capitalisation
-        # ("Missing File" appears in shinobi), so compare case-insensitively. The
-        # repetition was played but its .bk2 was lost: keep its container row, with the
-        # timing the task logged, so the run's timeline stays complete.
-        if not isinstance(stim, str) or stim.strip().lower() == "missing file":
+        # The repetition was played but its .bk2 was lost: keep its container row, with
+        # the onset the task logged, so the run's timeline stays complete. Its duration
+        # is that of the .bk2, so it is unknown.
+        if is_missing(stim):
             frames.append(pd.DataFrame([{
                 "onset": float(rep["onset"]),
-                "duration": pd.to_numeric(rep.get("duration"), errors="coerce"),
+                "duration": float("nan"),
+                **logged(rep),
                 "onset_in_video": pd.NA,
                 "trial_type": REPETITION,
                 "frame_start": pd.NA, "frame_stop": pd.NA,
@@ -104,7 +115,7 @@ def annotate_run(events_path: str, dataset_dir: str, game: Game) -> pd.DataFrame
 
         # The container row anchors stim_file and stays in the vocabulary as-is.
         container = pd.DataFrame([{
-            "onset": rep_onset, "duration": duration, "onset_in_video": 0.0,
+            "onset": rep_onset, "duration": duration, **logged(rep), "onset_in_video": 0.0,
             "trial_type": REPETITION,
             "frame_start": 0, "frame_stop": n_frames - 1,
             "stim_file": stim,
@@ -183,7 +194,8 @@ def write_events_sidecar(dataset_dir: str, game: Game) -> str:
     path = op.join(dataset_dir, f"task-{game.task}_events.json")
     sidecar = vocabulary.write_bids_sidecar(
         game.vocabulary, trial_types=census(dataset_dir),
-        type_descriptions=game.type_descriptions, buttons=game.buttons)
+        type_descriptions=game.type_descriptions, buttons=game.buttons,
+        logged_duration=game.logged_duration)
     with open(path, "w") as handle:
         json.dump(sidecar, handle, indent=2)
         handle.write("\n")

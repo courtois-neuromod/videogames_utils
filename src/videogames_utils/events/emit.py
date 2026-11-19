@@ -21,7 +21,7 @@ import pandas as pd
 #: `stim_file` is set on the Repetition container row only; every other event sits
 #: inside exactly one container window, so repeating the path on every row was noise.
 COLUMNS = [
-    "trial_type", "onset", "duration", "onset_in_video", "frame_start", "frame_stop",
+    "trial_type", "onset", "duration", "logged_duration", "onset_in_video", "frame_start", "frame_stop",
     "button", "stim_file",
 ]
 
@@ -112,6 +112,8 @@ def finalize(frames: Iterable[pd.DataFrame]) -> pd.DataFrame:
                     .reset_index(drop=True))
     events["onset"] = events["onset"].round(3)
     events["duration"] = events["duration"].round(3)
+    if "logged_duration" in events.columns:
+        events["logged_duration"] = pd.to_numeric(events["logged_duration"]).round(3)
     if "onset_in_video" in events.columns:
         events["onset_in_video"] = pd.to_numeric(events["onset_in_video"]).round(3)
 

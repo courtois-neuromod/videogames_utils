@@ -9,7 +9,7 @@ Which file, per run. Only the plain ``*_events.tsv`` are read: ``desc-*`` files 
 from the replays of these recordings, so they must not decide which recordings change.
 
 * the ``stim_file`` of the run's first ``gym-retro_game`` row;
-* nothing if that row is "Missing file" or empty: the extra line was in the lost recording,
+* nothing if that row is "Missing File" or empty: the extra line was in the lost recording,
   and the next repetition starts clean;
 * nothing if the .bk2 was written on or after the fix date. A .bk2's zip entries carry the
   time it was written, so this also skips any file that was already rewritten (stripped);

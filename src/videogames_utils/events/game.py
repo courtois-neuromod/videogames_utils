@@ -83,6 +83,10 @@ class Game:
         golden_sessions: ``(subject, session)`` pairs frozen as regression fixtures.
         ram_candidates: Verified RAM variables to merge into ``data.json``.
         mislabelled: ``data.json`` keys whose names are wrong, with what they hold.
+        logged_duration: True to copy the ``duration`` the task logged for each
+            repetition (the ``duration`` of the plain events.tsv) to the
+            ``logged_duration`` column of the annotated events, next to the ``duration``
+            read from the ``.bk2``.
     """
 
     task: str
@@ -110,6 +114,7 @@ class Game:
     golden_sessions: Sequence[Tuple[str, str]] = ()
     ram_candidates: Sequence = ()
     mislabelled: Mapping[str, str] = field(default_factory=dict)
+    logged_duration: bool = False
 
 
 def load_game(dataset_dir: str) -> Game:
